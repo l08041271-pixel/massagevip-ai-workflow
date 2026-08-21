@@ -1,0 +1,38 @@
+# This groups all services below into a single project in your Render dashboard
+project: massagevip-ai-prod 
+
+services:
+  # 1. 24/7 Background Worker
+  - type: worker
+    name: main-worker
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: AI_BASE_URL
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
+
+  # 2. Cron Job (Runs every 15 minutes)
+  - type: cron
+    name: night-shift-cron
+    env: python
+    schedule: "*/15 * * * *"
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: python night_shift.py # Update this to your actual cron script/command
+    envVars:
+      - key: AI_BASE_URL
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0
