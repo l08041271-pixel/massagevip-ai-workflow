@@ -6,6 +6,12 @@ import urllib.error
 
 from render_sdk import Workflows, Retry
 
+# Import control plane + agents to register all workflows together
+try:
+    from agents import agents as agents_app
+except Exception:
+    agents_app = None
+
 app = Workflows(
     default_retry=Retry(
         max_retries=3,
