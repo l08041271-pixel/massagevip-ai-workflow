@@ -1,9 +1,8 @@
 project: massagevip-ai-prod
 
 services:
-  # 24/7 Workflow runtime (process_lead, agents)
   - type: worker
-    name: main-worker
+    name: automation-worker
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt
@@ -17,26 +16,16 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: PYTHON_VERSION
-        value: 3.11.0
-
-  # Hunter cron every 15 min
-  - type: cron
-    name: night-shift-cron
-    env: python
-    schedule: "*/15 * * * *"
-    plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: python night_shift.py
-    envVars:
-      - key: AI_BASE_URL
+      - key: WHATSAPP_VERIFY_TOKEN
         sync: false
-      - key: AI_API_KEY
+      - key: WHATSAPP_APP_SECRET
         sync: false
-      - key: AI_MODEL
+      - key: WHATSAPP_PHONE_NUMBER_ID
         sync: false
-      - key: DATABASE_URL
+      - key: WHATSAPP_ACCESS_TOKEN
         sync: false
+      - key: PORT
+        value: "8080"
       - key: PYTHON_VERSION
         value: 3.11.0
 
