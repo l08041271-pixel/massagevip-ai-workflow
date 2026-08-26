@@ -4,12 +4,12 @@ Deterministic validation for customer-facing actions.
 AI must not perform uncontrolled external actions.
 """
 import re
-from typing import Any
+from typing import Any, Optional
 
 
 FORBIDDEN_PATTERNS = [
-    r"booking confirmed",
-    r"confirmed booking",
+    r"booking\s+(is\s+)?confirmed",
+    r"confirmed\s+booking",
     r"your appointment is confirmed",
     r"تم التأكيد",
     r"موعدك مؤكد",

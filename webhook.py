@@ -22,10 +22,8 @@ from idempotency import (
     IdempotencyRecord,
 )
 
-validate_config()
-
-VERIFY_TOKEN = os.environ["WHATSAPP_VERIFY_TOKEN"]
-APP_SECRET = os.environ["WHATSAPP_APP_SECRET"]
+VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
 PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 
 _pending_queue: list[dict[str, Any]] = []
