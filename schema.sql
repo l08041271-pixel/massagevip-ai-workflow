@@ -86,6 +86,46 @@ CREATE TABLE audit_log (
     timestamp TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE bookings (
+    id TEXT PRIMARY KEY,
+    event_id TEXT REFERENCES events(event_id),
+    customer_phone TEXT,
+    service TEXT,
+    status TEXT,
+    missing_info JSONB,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE follow_ups (
+    id TEXT PRIMARY KEY,
+    event_id TEXT REFERENCES events(event_id),
+    action TEXT,
+    scheduled_at TIMESTAMPTZ,
+    execute_at TIMESTAMPTZ,
+    status TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE approvals (
+    id TEXT PRIMARY KEY,
+    event_id TEXT REFERENCES events(event_id),
+    action TEXT,
+    payload JSONB,
+    status TEXT DEFAULT 'pending',
+    approver TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE metrics (
+    id SERIAL PRIMARY KEY,
+    metric_name TEXT,
+    metric_value NUMERIC,
+    tags JSONB,
+    timestamp TIMESTAMPTZ DEFAULT now()
+);
+
 -- Analytics materialized view
 CREATE OR REPLACE VIEW daily_metrics AS
 SELECT date_trunc('day', timestamp) as day, source,
@@ -102,3 +142,7 @@ CREATE INDEX idx_events_intent ON events(intent);
 CREATE INDEX idx_events_priority ON events(priority);
 CREATE INDEX idx_dead_letter_unresolved ON dead_letter_queue(resolved) WHERE resolved = false;
 CREATE INDEX idx_audit_event_id ON audit_log(event_id);
+CREATE INDEX idx_bookings_event_id ON bookings(event_id);
+CREATE INDEX idx_follow_ups_event_id ON follow_ups(event_id);
+CREATE INDEX idx_approvals_status ON approvals(status);
+CREATE INDEX idx_metrics_timestamp ON metrics(timestamp);

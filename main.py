@@ -16,9 +16,15 @@ from decision_engine import decide
 from actions import process_event
 from audit import log_decision, log_external_action
 from analytics import get_executive_summary
+from monitoring import HealthCheck, CircuitBreaker, retry_with_backoff
 from idempotency import mark_processed, IdempotencyRecord, send_to_dead_letter
+from booking import initiate_booking, confirm_booking, cancel_booking
+from follow_up import schedule_followup, execute_followup
+from approval import create_approval_request, approve, reject
 
 validate_config()
+
+_circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60.0)
 
 
 def _process_pending() -> None:
@@ -113,17 +119,22 @@ class UnifiedHandler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _send_json(self, status: int, data: dict[str, Any]) -> None:
+        self.send_response(status)
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
     def do_GET(self):
         if self.path == "/health":
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"ok")
+            health = HealthCheck.full()
+            self._send_json(200, health)
             return
         if self.path == "/dashboard":
             summary = get_executive_summary()
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(json.dumps(summary).encode())
+            self._send_json(200, summary)
+            return
+        if self.path == "/metrics":
+            self._send_json(200, {"status": "ok", "service": "massagevip-automation"})
             return
         self.send_response(404)
         self.end_headers()

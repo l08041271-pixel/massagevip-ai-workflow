@@ -5,6 +5,7 @@ Tests core pipeline without external dependencies.
 import json
 import os
 import sys
+import time
 import unittest
 from io import BytesIO
 from unittest.mock import patch, MagicMock
@@ -29,6 +30,10 @@ from verification import validate_reply as verify_reply, validate_booking_payloa
 from whatsapp_provider import get_whatsapp_provider, WahaProvider, DirectWhatsAppProvider
 from audit import log_decision, _sanitize
 from analytics import get_executive_summary
+from monitoring import HealthCheck, CircuitBreaker, retry_with_backoff
+from booking import initiate_booking, confirm_booking, cancel_booking
+from follow_up import schedule_followup, execute_followup
+from approval import create_approval_request, approve, reject
 
 
 class TestCorrelationAndLogging(unittest.TestCase):
@@ -359,6 +364,100 @@ class TestEndToEndPipeline(unittest.TestCase):
             result = process_event(event, qualification, context)
             self.assertIn("action", result)
             self.assertEqual(result["action"], decision.action)
+
+
+class TestMonitoring(unittest.TestCase):
+    def test_circuit_breaker_closed(self):
+        cb = CircuitBreaker(failure_threshold=3, recovery_timeout=1.0)
+        self.assertTrue(cb.allow_request())
+        cb.record_success()
+        self.assertTrue(cb.allow_request())
+
+    def test_circuit_breaker_opens_after_failures(self):
+        cb = CircuitBreaker(failure_threshold=2, recovery_timeout=1.0)
+        cb.record_failure()
+        cb.record_failure()
+        self.assertEqual(cb.state, "open")
+        self.assertFalse(cb.allow_request())
+
+    def test_circuit_breaker_half_open_after_timeout(self):
+        cb = CircuitBreaker(failure_threshold=2, recovery_timeout=0.1)
+        cb.record_failure()
+        cb.record_failure()
+        self.assertFalse(cb.allow_request())
+        time.sleep(0.2)
+        self.assertTrue(cb.allow_request())
+
+    def test_health_check_returns_status(self):
+        health = HealthCheck.full()
+        self.assertIn("timestamp", health)
+        self.assertIn("checks", health)
+        self.assertIn("database", health["checks"])
+
+    def test_retry_with_backoff_succeeds(self):
+        call_count = 0
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                raise RuntimeError("fail")
+            return "ok"
+        result = retry_with_backoff(flaky, max_retries=3, wait_duration_ms=10)
+        self.assertEqual(result, "ok")
+        self.assertEqual(call_count, 2)
+
+    def test_retry_with_backoff_fails(self):
+        def always_fail():
+            raise RuntimeError("always")
+        with self.assertRaises(RuntimeError):
+            retry_with_backoff(always_fail, max_retries=2, wait_duration_ms=10)
+
+
+class TestBooking(unittest.TestCase):
+    def test_initiate_booking(self):
+        event = {"event_id": "evt_1", "phone": "+966500000000"}
+        booking = initiate_booking(event, missing_info=["date", "time"])
+        self.assertEqual(booking["status"], "pending_info")
+        self.assertIn("date", booking["missing_info"])
+
+    def test_confirm_booking_valid(self):
+        booking = confirm_booking("bk_1", {"customer_name": "Ali", "service": "massage", "date": "2026-08-27", "time": "20:00"})
+        self.assertEqual(booking["status"], "confirmed")
+
+    def test_confirm_booking_invalid(self):
+        booking = confirm_booking("bk_1", {"customer_name": "Ali"})
+        self.assertEqual(booking["status"], "invalid")
+
+    def test_cancel_booking(self):
+        booking = cancel_booking("bk_1", reason="customer_request")
+        self.assertEqual(booking["status"], "cancelled")
+
+
+class TestFollowUp(unittest.TestCase):
+    def test_schedule_followup(self):
+        fu = schedule_followup("evt_1", delay_minutes=30, action="nurture")
+        self.assertEqual(fu["action"], "nurture")
+        self.assertEqual(fu["status"], "scheduled")
+
+    def test_execute_followup(self):
+        fu = {"followup_id": "fu_1", "action": "nurture"}
+        result = execute_followup(fu)
+        self.assertEqual(result["status"], "executed")
+
+
+class TestApproval(unittest.TestCase):
+    def test_create_approval_request(self):
+        req = create_approval_request("evt_1", "send_message", {"text": "Hello"})
+        self.assertEqual(req["status"], "pending")
+        self.assertEqual(req["action"], "send_message")
+
+    def test_approve(self):
+        result = approve("ap_1", approver="manager")
+        self.assertEqual(result["status"], "approved")
+
+    def test_reject(self):
+        result = reject("ap_1", reason="not_appropriate")
+        self.assertEqual(result["status"], "rejected")
 
 
 if __name__ == "__main__":
