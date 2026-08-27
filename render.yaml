@@ -5,8 +5,7 @@ services:
   - type: docker
     name: waha
     plan: starter
-    dockerfilePath: ./Dockerfile.waha
-    dockerContext: .
+    image: devlikeapro/waha:latest
     envVars:
       - key: WHATSAPP_HOOK_URL
         value: https://automation-worker.onrender.com/webhook
