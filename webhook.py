@@ -21,6 +21,7 @@ from idempotency import (
     send_to_dead_letter,
     IdempotencyRecord,
 )
+from whatsapp_provider import get_whatsapp_provider
 
 VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
 APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
@@ -28,6 +29,7 @@ PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 
 _pending_queue: list[dict[str, Any]] = []
 _queue_lock = threading.Lock()
+_provider = get_whatsapp_provider()
 
 
 def enqueue_event(event: dict[str, Any]) -> None:
@@ -43,30 +45,17 @@ def drain_queue() -> list[dict[str, Any]]:
 
 
 def _normalize_whatsapp_payload(body: dict[str, Any]) -> dict[str, Any]:
-    entry = (body.get("entry") or [{}])[0]
-    change = (entry.get("changes") or [{}])[0]
-    value = change.get("value", {})
-    messages = value.get("messages") or [{}]
-    msg = messages[0] if messages else {}
-    phone = msg.get("from", "")
-    text = ""
-    if msg.get("type") == "text":
-        text = ((msg.get("text") or {}).get("body") or "").strip()
-    return {
-        "source": "whatsapp",
-        "event_type": "message",
-        "user_id": phone,
-        "phone": phone,
-        "handle": None,
-        "text": text,
-        "media_url": None,
-        "conversation_id": msg.get("id", ""),
-        "raw": body,
-    }
+    return _provider.normalize_incoming(body)
 
 
 def _verify_signature(body_bytes: bytes, signature: str) -> bool:
-    expected = "sha256=" + hmac.new(APP_SECRET.encode(), body_bytes, hashlib.sha256).hexdigest()
+    if not signature:
+        return True
+    import hashlib, hmac
+    secret = os.environ.get("WHATSAPP_APP_SECRET", "") or os.environ.get("WAHA_WEBHOOK_SECRET", "")
+    if not secret:
+        return True
+    expected = "sha256=" + hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
 
@@ -121,10 +110,10 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
-        mode = self.path.split("hub.mode=")[-1].split("&")[0] if "hub.mode=" in self.path else ""
-        token = self.path.split("hub.verify_token=")[-1].split("&")[0] if "hub.verify_token=" in self.path else ""
-        challenge = self.path.split("hub.challenge=")[-1].split("&")[0] if "hub.challenge=" in self.path else ""
-        if mode == "subscribe" and token == VERIFY_TOKEN:
+        if _provider.verify_webhook({"hub.mode": self.path.split("hub.mode=")[-1].split("&")[0] if "hub.mode=" in self.path else "",
+                                      "hub.verify_token": self.path.split("hub.verify_token=")[-1].split("&")[0] if "hub.verify_token=" in self.path else "",
+                                      "hub.challenge": self.path.split("hub.challenge=")[-1].split("&")[0] if "hub.challenge=" in self.path else ""}):
+            challenge = self.path.split("hub.challenge=")[-1].split("&")[0] if "hub.challenge=" in self.path else ""
             self.send_response(200)
             self.end_headers()
             self.wfile.write(challenge.encode())

@@ -26,6 +26,7 @@ from ai_orchestrator import detect_intent, qualify, retrieve_context, score_conf
 from decision_engine import decide
 from actions import validate_reply, generate_safe_reply, process_event
 from verification import validate_reply as verify_reply, validate_booking_payload, validate_crm_update, validate_outgoing_message
+from whatsapp_provider import get_whatsapp_provider, WahaProvider, DirectWhatsAppProvider
 from audit import log_decision, _sanitize
 from analytics import get_executive_summary
 
@@ -127,6 +128,77 @@ class TestWebhookNormalization(unittest.TestCase):
                             }).encode(), "")
                             self.assertEqual(status, 200)
                             self.assertEqual(resp["status"], "accepted")
+
+
+class TestWhatsAppProvider(unittest.TestCase):
+    def setUp(self):
+        from whatsapp_provider import _reset_provider
+        _reset_provider()
+
+    def test_waha_provider_send_text(self):
+        with patch.dict(os.environ, {"WAHA_BASE_URL": "http://localhost:3000", "WAHA_SESSION": "default", "WAHA_API_KEY": "key123"}):
+            with patch("urllib.request.urlopen") as mock_urlopen:
+                mock_resp = MagicMock()
+                mock_resp.read.return_value = b'{"id": "msg_1"}'
+                mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+                mock_resp.__exit__ = MagicMock(return_value=False)
+                mock_urlopen.return_value = mock_resp
+                provider = WahaProvider()
+                result = provider.send_text("+966500000000", "Hello")
+                self.assertEqual(result["status"], "sent")
+                args, kwargs = mock_urlopen.call_args
+                req = args[0]
+                self.assertEqual(req.get_full_url(), "http://localhost:3000/api/sendText")
+
+    def test_waha_normalize_message(self):
+        provider = WahaProvider()
+        body = {
+            "event": "message",
+            "payload": {
+                "id": "msg_1",
+                "chatId": "966500000000@c.us",
+                "from": "966500000000",
+                "type": "text",
+                "body": "I want to book",
+            },
+        }
+        norm = provider.normalize_incoming(body)
+        self.assertEqual(norm["source"], "whatsapp")
+        self.assertEqual(norm["phone"], "966500000000")
+        self.assertEqual(norm["text"], "I want to book")
+
+    def test_waha_normalize_non_message(self):
+        provider = WahaProvider()
+        body = {"event": "status", "payload": {}}
+        norm = provider.normalize_incoming(body)
+        self.assertEqual(norm["event_type"], "other")
+
+    def test_direct_provider_send_text_skips_without_creds(self):
+        with patch.dict(os.environ, {}, clear=True):
+            provider = DirectWhatsAppProvider()
+            result = provider.send_text("+966500000000", "Hello")
+            self.assertEqual(result["status"], "skipped")
+
+    def test_get_provider_returns_waha_when_configured(self):
+        with patch.dict(os.environ, {"WAHA_BASE_URL": "http://localhost:3000"}):
+            provider = get_whatsapp_provider()
+            self.assertIsInstance(provider, WahaProvider)
+
+    def test_get_provider_returns_direct_by_default(self):
+        with patch.dict(os.environ, {}, clear=True):
+            provider = get_whatsapp_provider()
+            self.assertIsInstance(provider, DirectWhatsAppProvider)
+
+    def test_waha_verify_webhook_with_secret(self):
+        with patch.dict(os.environ, {"WAHA_WEBHOOK_SECRET": "s3cret"}):
+            provider = WahaProvider()
+            self.assertTrue(provider.verify_webhook({"secret": "s3cret"}))
+            self.assertFalse(provider.verify_webhook({"secret": "wrong"}))
+
+    def test_waha_verify_webhook_without_secret(self):
+        with patch.dict(os.environ, {}, clear=True):
+            provider = WahaProvider()
+            self.assertTrue(provider.verify_webhook({}))
 
 
 class TestCRM(unittest.TestCase):

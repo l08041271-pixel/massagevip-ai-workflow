@@ -1,6 +1,23 @@
 project: massagevip-ai-prod
 
 services:
+  # WhatsApp gateway via WAHA
+  - type: docker
+    name: waha
+    plan: starter
+    dockerfilePath: ./Dockerfile.waha
+    dockerContext: .
+    envVars:
+      - key: WHATSAPP_HOOK_URL
+        value: https://massagevip-automation.onrender.com/webhook
+      - key: WHATSAPP_HOOK_EVENTS
+        value: "*"
+      - key: WAHA_API_KEY
+        sync: false
+      - key: WAHA_WEBHOOK_SECRET
+        sync: false
+
+  # Main automation worker
   - type: worker
     name: automation-worker
     env: python
@@ -16,16 +33,12 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      - key: WHATSAPP_VERIFY_TOKEN
+      - key: WAHA_BASE_URL
+        value: http://waha:3000
+      - key: WAHA_SESSION
+        value: default
+      - key: WAHA_API_KEY
         sync: false
-      - key: WHATSAPP_APP_SECRET
-        sync: false
-      - key: WHATSAPP_PHONE_NUMBER_ID
-        sync: false
-      - key: WHATSAPP_ACCESS_TOKEN
-        sync: false
-      - key: PORT
-        value: "8080"
       - key: PYTHON_VERSION
         value: 3.11.0
 

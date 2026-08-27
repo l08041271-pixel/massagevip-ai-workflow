@@ -1,0 +1,7 @@
+FROM devlikeapro/waha:latest
+
+# Expose WAHA port
+EXPOSE 3000
+
+# Default command
+CMD ["/bin/sh", "-c", "while true; do sleep 3600; done"]

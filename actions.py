@@ -15,41 +15,12 @@ from middleware import correlation_id, log_event, mask_secret
 from crm import get_crm
 from idempotency import mark_processed, send_to_dead_letter, IdempotencyRecord
 from ai_orchestrator import ai_chat
+from whatsapp_provider import get_whatsapp_provider
 
 
 def _whatsapp_send(to_phone: str, message: str) -> dict[str, Any]:
-    token = os.environ.get("WHATSAPP_ACCESS_TOKEN")
-    phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID")
-    if not token or not phone_id:
-        return {"status": "skipped", "reason": "missing_whatsapp_credentials"}
-    url = f"https://graph.facebook.com/v19.0/{phone_id}/messages"
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": to_phone,
-        "type": "text",
-        "text": {"body": message},
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            resp = json.loads(r.read().decode())
-            log_event("whatsapp_sent", {"to": mask_secret(to_phone), "message_id": resp.get("messages", [{}])[0].get("id")})
-            return {"status": "sent", "response": resp}
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        log_event("whatsapp_send_failed", {"http_code": exc.code, "body": body}, level="error")
-        return {"status": "failed", "http_code": exc.code, "body": body}
-    except Exception as exc:
-        log_event("whatsapp_send_error", {"error": str(exc)}, level="error")
-        return {"status": "error", "error": str(exc)}
+    provider = get_whatsapp_provider()
+    return provider.send_text(to_phone, message)
 
 
 def validate_reply(reply: str) -> bool:
