@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MassageVIP - WAHA QR Setup</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #075e54; text-align: center; }
+        h2 { color: #128c7e; margin-top: 25px; }
+        .step {
+            background: #f0f9f8;
+            border-left: 4px solid #128c7e;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .step-number {
+            background: #128c7e;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .command {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #28a745;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        a { color: #128c7e; }
+        .qr-placeholder {
+            text-align: center;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 MassageVIP Automation</h1>
+        <p style="text-align: center; color: #666;">WAHA WhatsApp Session Setup</p>
+
+        <div class="warning">
+            <strong>⚠️ Prerequisite:</strong> You need a WhatsApp phone number that hasn't been linked to WhatsApp Web/Desktop before. Use a dedicated business number.
+        </div>
+
+        <h2><span class="step-number">1</span>Start WAHA</h2>
+        <div class="step">
+            <p>Run this command in your terminal:</p>
+            <div class="command">docker run -p 3000:3000 devlikeapro/waha</div>
+            <p>Keep this terminal window open. You should see: <code>WhatsApp API is running on: http://[::1]:3000</code></p>
+        </div>
+
+        <h2><span class="step-number">2</span>Create Session</h2>
+        <div class="step">
+            <p>Open a <strong>new</strong> terminal window and run:</p>
+            <div class="command">curl -X POST http://localhost:3000/api/sessions -H "Content-Type: application/json" -d '{"name": "default"}'</div>
+            <p>Or open in browser: <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></p>
+        </div>
+
+        <h2><span class="step-number">3</span>Get QR Code</h2>
+        <div class="step">
+            <p>Run this command:</p>
+            <div class="command">python3 generate_qr.py</div>
+            <p>This will create <code>waha_qr.png</code> in your current folder.</p>
+        </div>
+
+        <div class="qr-placeholder" id="qr-area">
+            <p>📷 QR Code will appear here after running <code>generate_qr.py</code></p>
+            <p style="font-size: 48px;">📱</p>
+        </div>
+
+        <h2><span class="step-number">4</span>Scan with WhatsApp</h2>
+        <div class="step">
+            <ol>
+                <li>Open WhatsApp on your phone</li>
+                <li>Go to <strong>Settings → Linked Devices</strong></li>
+                <li>Tap <strong>Link a Device</strong></li>
+                <li>Scan the QR code from <code>waha_qr.png</code></li>
+            </ol>
+        </div>
+
+        <h2><span class="step-number">5</span>Verify Connection</h2>
+        <div class="step">
+            <p>After scanning, verify the session is active:</p>
+            <div class="command">curl http://localhost:3000/api/sessions</div>
+            <p>You should see <code>"status": "STARTED"</code> or <code>"status": "WORKING"</code>.</p>
+        </div>
+
+        <h2><span class="step-number">6</span>Send Test Message</h2>
+        <div class="step">
+            <p>Send a WhatsApp message <strong>to your linked number</strong> from another phone:</p>
+            <div class="command">curl -X POST http://localhost:3000/api/sendText -H "Content-Type: application/json" -d '{"session": "default", "chatId": "966500000000@c.us", "text": "Hello from MassageVIP!"}'</p>
+            <p>Replace <code>966500000000</code> with the phone number you used for QR scanning.</p>
+        </div>
+
+        <div class="success">
+            <strong>✅ You're live!</strong> Your WhatsApp number is now connected to MassageVIP Automation. Any incoming messages will be processed by the AI pipeline.
+        </div>
+
+        <h2>Next Steps</h2>
+        <div class="step">
+            <p>After confirming the QR scan works:</p>
+            <ol>
+                <li>Deploy the automation worker to Render or your server</li>
+                <li>Set <code>WAHA_BASE_URL</code> to point to your WAHA instance</li>
+                <li>Configure webhook in WAHA: <code>WHATSAPP_HOOK_URL=http://your-worker:8080/webhook</code></li>
+                <li>Monitor <code>/dashboard</code> for incoming leads</li>
+            </ol>
+        </div>
+
+        <p style="text-align: center; margin-top: 30px; color: #999; font-size: 14px;">
+            MassageVIP Automation | Production-Ready MVP
+        </p>
+    </div>
+</body>
+</html>
