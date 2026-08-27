@@ -45,13 +45,14 @@ OPTIONAL_ENV = [
 ]
 
 
-def validate_config() -> None:
+def validate_config() -> list[str]:
     missing = [v for v in REQUIRED_ENV if not os.environ.get(v)]
     if missing:
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+        logger.error("Missing required environment variables: %s", ", ".join(missing))
     for v in OPTIONAL_ENV:
         if v in os.environ and not os.environ[v]:
             logger.warning("config_validation", extra={"event": "env_empty", "key": v})
+    return missing
 
 
 def correlation_id() -> str:

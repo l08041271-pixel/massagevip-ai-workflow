@@ -22,7 +22,9 @@ from booking import initiate_booking, confirm_booking, cancel_booking
 from follow_up import schedule_followup, execute_followup
 from approval import create_approval_request, approve, reject
 
-validate_config()
+_missing_env = validate_config()
+if _missing_env:
+    log_event("config_missing_env", {"missing": _missing_env}, level="error")
 
 _circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60.0)
 
