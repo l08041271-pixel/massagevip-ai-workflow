@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: massagevip-waha
+    ports:
+      - "3000:3000"
+    environment:
+      - WHATSAPP_HOOK_URL=http://automation-worker:8080/webhook
+      - WHATSAPP_HOOK_EVENTS=*
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WAHA_WEBHOOK_SECRET=${WAHA_WEBHOOK_SECRET}
+    volumes:
+      - waha-sessions:/app/.waha
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  automation-worker:
+    build: .
+    container_name: massagevip-automation
+    ports:
+      - "8080:8080"
+    environment:
+      - AI_BASE_URL=${AI_BASE_URL}
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_MODEL=${AI_MODEL:-gpt-oss:120b-cloud}
+      - DATABASE_URL=${DATABASE_URL}
+      - WAHA_BASE_URL=http://waha:3000
+      - WAHA_SESSION=${WAHA_SESSION:-default}
+      - WAHA_API_KEY=${WAHA_API_KEY}
+      - WAHA_WEBHOOK_SECRET=${WAHA_WEBHOOK_SECRET}
+      - PORT=8080
+    depends_on:
+      waha:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  waha-sessions:

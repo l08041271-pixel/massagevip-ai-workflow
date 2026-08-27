@@ -9,7 +9,7 @@ services:
     dockerContext: .
     envVars:
       - key: WHATSAPP_HOOK_URL
-        value: https://massagevip-automation.onrender.com/webhook
+        value: https://automation-worker.onrender.com/webhook
       - key: WHATSAPP_HOOK_EVENTS
         value: "*"
       - key: WAHA_API_KEY
@@ -39,6 +39,10 @@ services:
         value: default
       - key: WAHA_API_KEY
         sync: false
+      - key: WAHA_WEBHOOK_SECRET
+        sync: false
+      - key: PORT
+        value: "8080"
       - key: PYTHON_VERSION
         value: 3.11.0
 
