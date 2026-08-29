@@ -78,6 +78,7 @@ class LeadStore(ABC):
 class PostgresLeadStore(LeadStore):
     def upsert_lead(self, lead: Lead) -> Lead:
         import psycopg2
+        import uuid
         url = os.environ.get('DATABASE_URL')
         if not url:
             return lead
@@ -97,20 +98,41 @@ class PostgresLeadStore(LeadStore):
                     row = cur.fetchone()
                     if row:
                         existing = row[0]
+            now = datetime.now(timezone.utc).isoformat()
             if existing:
+                # Merge: fill empty existing fields with new non-empty values;
+                # never overwrite a populated canonical field. Sets duplicate_of
+                # on the new attempt only when it is a duplicate click.
+                with conn.cursor() as cur:
+                    cur.execute('SELECT id, phone, email, name, source, campaign, landing_page, status, score, notes, duplicate_of, created_at, updated_at FROM leads WHERE id = %s', (existing,))
+                    existing_lead = self._row_to_lead(cur.fetchone())
+                merged_phone = existing_lead.phone or normalized_phone
+                merged_email = existing_lead.email or normalized_email
+                merged_name = existing_lead.name or lead.name
+                merged_source = existing_lead.source or lead.source
+                merged_campaign = existing_lead.campaign or lead.campaign
+                merged_landing = existing_lead.landing_page or lead.landing_page
+                merged_score = existing_lead.score or lead.score
+                merged_notes = existing_lead.notes or lead.notes
                 with conn.cursor() as cur:
                     cur.execute(
-                        'UPDATE leads SET phone = %s, email = %s, name = %s, source = %s, campaign = %s, landing_page = %s, score = %s, notes = %s, updated_at = %s WHERE id = %s',
+                        """
+                        UPDATE leads SET
+                            phone = %s, email = %s, name = %s, source = %s,
+                            campaign = %s, landing_page = %s, score = %s,
+                            notes = %s, updated_at = %s
+                        WHERE id = %s
+                        """,
                         (
-                            normalized_phone,
-                            normalized_email,
-                            lead.name,
-                            lead.source,
-                            lead.campaign,
-                            lead.landing_page,
-                            lead.score,
-                            lead.notes,
-                            datetime.now(timezone.utc).isoformat(),
+                            merged_phone or None,
+                            merged_email or None,
+                            merged_name or None,
+                            merged_source or None,
+                            merged_campaign or None,
+                            merged_landing or None,
+                            merged_score,
+                            merged_notes or None,
+                            now,
                             existing,
                         ),
                     )
@@ -120,28 +142,39 @@ class PostgresLeadStore(LeadStore):
                     cur.execute('SELECT id, phone, email, name, source, campaign, landing_page, status, score, notes, duplicate_of, created_at, updated_at FROM leads WHERE id = %s', (existing,))
                     row = cur.fetchone()
                     return self._row_to_lead(row)
+            lead_id = lead.id or str(uuid.uuid4())
             with conn.cursor() as cur:
                 cur.execute(
-                    'INSERT INTO leads (id, phone, email, name, source, campaign, landing_page, status, score, notes, duplicate_of, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)',
+                    """
+                    INSERT INTO leads (id, phone, email, name, source, campaign, landing_page, status, score, notes, duplicate_of, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        phone = EXCLUDED.phone, email = EXCLUDED.email, name = EXCLUDED.name,
+                        source = EXCLUDED.source, campaign = EXCLUDED.campaign,
+                        landing_page = EXCLUDED.landing_page, score = EXCLUDED.score,
+                        notes = EXCLUDED.notes, updated_at = EXCLUDED.updated_at
+                    RETURNING id, phone, email, name, source, campaign, landing_page, status, score, notes, duplicate_of, created_at, updated_at
+                    """,
                     (
-                        lead.id,
-                        normalized_phone,
-                        normalized_email,
-                        lead.name,
-                        lead.source,
-                        lead.campaign,
-                        lead.landing_page,
-                        lead.status,
+                        lead_id,
+                        normalized_phone or None,
+                        normalized_email or None,
+                        lead.name or None,
+                        lead.source or None,
+                        lead.campaign or None,
+                        lead.landing_page or None,
+                        lead.status or 'NEW',
                         lead.score,
-                        lead.notes,
-                        lead.duplicate_of,
-                        lead.created_at,
-                        lead.updated_at,
+                        lead.notes or None,
+                        lead.duplicate_of or None,
+                        lead.created_at or now,
+                        lead.updated_at or now,
                     ),
                 )
+                row = cur.fetchone()
             conn.commit()
-            log_event('lead_upserted', {'lead_id': lead.id, 'status': 'created'})
-            return lead
+            log_event('lead_upserted', {'lead_id': lead_id, 'status': 'created'})
+            return self._row_to_lead(row)
         finally:
             conn.close()
 
@@ -264,14 +297,22 @@ class MockLeadStore(LeadStore):
                     existing = existing_lead
                     break
         if existing:
-            existing.phone = normalized_phone
-            existing.email = normalized_email
-            existing.name = lead.name
-            existing.source = lead.source
-            existing.campaign = lead.campaign
-            existing.landing_page = lead.landing_page
-            existing.score = lead.score
-            existing.notes = lead.notes
+            if not existing.phone:
+                existing.phone = normalized_phone
+            if not existing.email:
+                existing.email = normalized_email
+            if not existing.name:
+                existing.name = lead.name
+            if not existing.source:
+                existing.source = lead.source
+            if not existing.campaign:
+                existing.campaign = lead.campaign
+            if not existing.landing_page:
+                existing.landing_page = lead.landing_page
+            if not existing.score:
+                existing.score = lead.score
+            if not existing.notes:
+                existing.notes = lead.notes
             existing.updated_at = datetime.now(timezone.utc).isoformat()
             log_event('lead_upserted', {'lead_id': existing.id, 'status': 'existing_updated'})
             return existing
@@ -288,7 +329,8 @@ class MockLeadStore(LeadStore):
         results = list(self._store.values())
         if status:
             results = [l for l in results if l.status == status]
-        return results[-limit:]
+        results.sort(key=lambda l: l.created_at, reverse=True)
+        return results[:limit]
 
     def transition_status(self, lead_id: str, new_status: str) -> Lead:
         lead = self._store.get(lead_id)
