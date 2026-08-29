@@ -6,7 +6,6 @@ import hashlib
 import hmac
 import json
 import os
-import re
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -63,7 +62,8 @@ class PostgresClickStore(ClickStore):
 
 
 class MockClickStore(ClickStore):
-    _clicks: list[dict] = []
+    def __init__(self) -> None:
+        self._clicks: list[dict] = []
 
     def track(self, payload: dict) -> dict:
         if not payload.get("source") and not payload.get("landing_page"):
@@ -92,7 +92,7 @@ class MockClickStore(ClickStore):
             "ip": ip,
             "lead_id": lead_id,
         }
-        MockClickStore._clicks.append(record)
+        self._clicks.append(record)
 
         log_event("whatsapp_click_tracked", {"click_id": click_id, "source": source, "landing_page": landing_page})
         return {"click_id": click_id, "status": "tracked"}
@@ -143,11 +143,12 @@ def track_whatsapp_click(payload: dict) -> dict:
         return {"error": "missing_source_and_landing_page", "status": "rejected"}
 
     lead_id = _correlate_lead(payload)
+    local_payload = dict(payload)
     if lead_id:
-        payload["lead_id"] = lead_id
+        local_payload["lead_id"] = lead_id
 
     store = get_click_store()
-    return store.track(payload)
+    return store.track(local_payload)
 
 
 def _verify_signature(body_bytes: bytes, signature: str) -> bool:
