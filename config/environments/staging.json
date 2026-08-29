@@ -1,0 +1,34 @@
+{
+  "extends": "default",
+  "project": {
+    "environment": "staging",
+    "debug": true
+  },
+  "server": {
+    "port": 3000,
+    "cors": {
+      "enabled": true,
+      "origins": ["https://staging.bots.business"]
+    },
+    "rateLimit": {
+      "windowMs": 60000,
+      "max": 500
+    }
+  },
+  "database": {
+    "primary": {
+      "host": "staging-db.example.com",
+      "name": "bots_business_staging"
+    },
+    "cache": {
+      "host": "staging-redis.example.com"
+    }
+  },
+  "monitoring": {
+    "logLevel": "info",
+    "alerts": {
+      "enabled": true,
+      "email": "staging-alerts@bots.business"
+    }
+  }
+}

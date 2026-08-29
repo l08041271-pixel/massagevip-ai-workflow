@@ -1,0 +1,13 @@
+{
+  "extends": "production",
+  "project": {
+    "environment": "production"
+  },
+  "server": {
+    "port": 443,
+    "rateLimit": {
+      "windowMs": 60000,
+      "max": 2000
+    }
+  }
+}

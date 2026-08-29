@@ -1,0 +1,41 @@
+{
+  "extends": "default",
+  "project": {
+    "environment": "development",
+    "debug": true
+  },
+  "server": {
+    "port": 3000,
+    "cors": {
+      "enabled": true,
+      "origins": ["http://localhost:3001", "http://localhost:8080"]
+    }
+  },
+  "database": {
+    "primary": {
+      "name": "bots_business_dev"
+    },
+    "cache": {
+      "port": 6379,
+      "ttl": 3600
+    }
+  },
+  "monitoring": {
+    "logLevel": "debug",
+    "metrics": {
+      "enabled": true,
+      "port": 9090
+    },
+    "alerts": {
+      "enabled": false
+    }
+  },
+  "externalServices": {
+    "stripe": {
+      "apiVersion": "2024-06-20"
+    },
+    "paypal": {
+      "mode": "sandbox"
+    }
+  }
+}

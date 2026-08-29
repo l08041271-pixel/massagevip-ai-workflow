@@ -1,0 +1,139 @@
+{
+  "project": {
+    "name": "Bots.Business Integration Framework",
+    "version": "1.0.0",
+    "description": "Integration framework for Bots.Business platform connecting CRM, Sheets, Analytics, Payments, and Email services",
+    "environment": "development",
+    "debug": true,
+    "timezone": "UTC"
+  },
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0",
+    "cors": {
+      "enabled": true,
+      "origins": ["*"]
+    },
+    "rateLimit": {
+      "windowMs": 60000,
+      "max": 100
+    }
+  },
+  "database": {
+    "primary": {
+      "host": "localhost",
+      "port": 5432,
+      "name": "bots_business_db",
+      "pool": {
+        "min": 2,
+        "max": 10
+      }
+    },
+    "cache": {
+      "host": "localhost",
+      "port": 6379,
+      "ttl": 3600
+    }
+  },
+  "integrations": {
+    "crm": {
+      "enabled": true,
+      "defaultProvider": "salesforce",
+      "providers": ["salesforce", "hubspot"]
+    },
+    "sheets": {
+      "enabled": true,
+      "defaultProvider": "google",
+      "providers": ["google", "csv"]
+    },
+    "analytics": {
+      "enabled": true,
+      "defaultProvider": "google",
+      "providers": ["google", "mixpanel"]
+    },
+    "payments": {
+      "enabled": true,
+      "defaultProvider": "stripe",
+      "providers": ["stripe", "paypal"]
+    },
+    "email": {
+      "enabled": true,
+      "defaultProvider": "mailchimp",
+      "providers": ["mailchimp", "convertkit"]
+    }
+  },
+  "webhooks": {
+    "enabled": true,
+    "timeout": 5000,
+    "maxRetries": 3,
+    "retryDelay": 1000,
+    "verifySignature": true
+  },
+  "sync": {
+    "enabled": true,
+    "mode": "hybrid",
+    "batchSize": 100,
+    "pollInterval": 30000
+  },
+  "monitoring": {
+    "enabled": true,
+    "logLevel": "info",
+    "metrics": {
+      "enabled": true,
+      "port": 9090
+    },
+    "alerts": {
+      "enabled": true,
+      "email": "alerts@example.com",
+      "thresholds": {
+        "errorRate": 0.05,
+        "latencyMs": 1000
+      }
+    }
+  },
+  "security": {
+    "jwtSecret": "your-jwt-secret-key",
+    "tokenExpiry": "24h",
+    "encryptionKey": "your-encryption-key-32-chars",
+    "apiKeyHeader": "X-API-Key",
+    "allowedIPs": []
+  },
+  "externalServices": {
+    "stripe": {
+      "apiVersion": "2024-06-20",
+      "webhookSecret": "whsec_..."
+    },
+    "paypal": {
+      "mode": "sandbox",
+      "clientId": "your-client-id",
+      "clientSecret": "your-client-secret"
+    },
+    "mailchimp": {
+      "serverPrefix": "us1",
+      "apiKey": "your-api-key"
+    },
+    "convertkit": {
+      "apiKey": "your-api-key",
+      "apiSecret": "your-api-secret"
+    },
+    "googleAnalytics": {
+      "propertyId": "your-property-id",
+      "credentialsPath": "./credentials/google-analytics.json"
+    },
+    "googleSheets": {
+      "credentialsPath": "./credentials/google-sheets.json"
+    },
+    "salesforce": {
+      "loginUrl": "https://login.salesforce.com",
+      "apiVersion": "v58.0"
+    },
+    "hubspot": {
+      "portalId": "your-portal-id",
+      "apiKey": "your-api-key"
+    },
+    "mixpanel": {
+      "token": "your-project-token",
+      "apiSecret": "your-api-secret"
+    }
+  }
+}

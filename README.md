@@ -1,120 +1,173 @@
-# MassageVIP Automation
+# Bots.Business Integration Framework
 
-Production-ready WhatsApp lead automation system with AI qualification, human handoff, and executive dashboard.
+A comprehensive integration framework for the Bots.Business platform connecting CRM, Sheets, Analytics, Payments, and Email services.
 
-## Architecture
+## Features
 
-```
-Customer
-  ↓
-WhatsApp (via WAHA)
-  ↓
-HTTPS Webhook
-  ↓
-Webhook Verification
-  ↓
-Event Normalization
-  ↓
-Idempotency
-  ↓
-Event Persistence
-  ↓
-CRM
-  ↓
-AI Orchestration
-  ├── Intent Detection
-  ├── Context Retrieval
-  ├── Qualification
-  ├── Confidence Scoring
-  └── Human Handoff
-  ↓
-Decision Engine
-  ↓
-Actions
-  ├── WhatsApp Response
-  ├── CRM Update
-  ├── Follow-up
-  └── Booking
-  ↓
-Verification
-  ↓
-Audit/Event Log
-  ↓
-Analytics / CEO Dashboard
-```
+- **Multi-Provider Support**: Connect to multiple providers per category (Salesforce, HubSpot, Google Sheets, Google Analytics, Mixpanel, Stripe, PayPal, Mailchimp, ConvertKit)
+- **Unified API**: Consistent interface across all integrations
+- **Authentication**: Built-in JWT and OAuth handling
+- **Webhooks**: Incoming and outgoing webhook support with signature verification
+- **Sync Strategies**: Realtime, batch, and hybrid synchronization modes
+- **Monitoring**: Logging, metrics, and alerting built-in
+- **Security**: Rate limiting, encryption, and IP whitelisting
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
-- PostgreSQL
-- WAHA (WhatsApp HTTP API) or WhatsApp Business API credentials
-- AI API endpoint (OpenAI-compatible)
+- Node.js >= 18.0.0
+- PostgreSQL (optional, for persistence)
+- Redis (optional, for caching)
 
-### Local Install
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
-```
-
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `AI_BASE_URL` | Yes | AI API base URL |
-| `AI_API_KEY` | Yes | AI API key |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `WAHA_BASE_URL` | No | WAHA instance URL (e.g., `http://localhost:3000`) |
-| `WAHA_SESSION` | No | WAHA session name (default: `default`) |
-| `WAHA_API_KEY` | No | WAHA API key |
-| `WAHA_WEBHOOK_SECRET` | No | Webhook verification secret |
-| `WHATSAPP_ACCESS_TOKEN` | No | Direct WhatsApp API token |
-| `WHATSAPP_PHONE_NUMBER_ID` | No | Direct WhatsApp phone ID |
-
-### Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/webhook` | POST | WhatsApp webhook ingestion |
-| `/health` | GET | Health check with dependency status |
-| `/dashboard` | GET | Executive summary metrics |
-| `/metrics` | GET | Service metrics |
-
-## Deployment
-
-### Render
-
-See `render.yaml` for service configuration. Deploy with:
-
-1. Push code to GitHub
-2. Connect repository to Render
-3. Render will create `automation-worker` and `waha` services
-4. Set environment variables in Render dashboard
-
-### Database
-
-Run `schema.sql` against your PostgreSQL instance:
+### Installation
 
 ```bash
-psql -U app -d massagevip -f schema.sql
+# Clone the repository
+git clone https://github.com/bots-business/integration-framework.git
+cd integration-framework
+
+# Install dependencies
+npm install
+
+# Copy environment configuration
+cp .env.example .env
+
+# Edit .env with your configuration
+nano .env
+
+# Run setup
+npm run setup
+
+# Start development server
+npm run dev
 ```
+
+## Configuration
+
+The framework uses JSON configuration files with environment-specific overrides:
+
+```
+config/
+├── default.json           # Base configuration
+├── production.json        # Production overrides
+└── environments/
+    ├── development.json
+    ├── staging.json
+    └── production.json
+```
+
+## Project Structure
+
+```
+src/
+├── core/           # Core framework (client, auth, utils)
+├── integrations/   # Integration providers
+│   ├── crm/        # Salesforce, HubSpot
+│   ├── sheets/     # Google Sheets, CSV
+│   ├── analytics/  # Google Analytics, Mixpanel
+│   ├── payments/   # Stripe, PayPal
+│   └── email/      # Mailchimp, ConvertKit
+├── webhooks/       # Incoming/Outgoing webhook handlers
+├── sync/           # Realtime, batch, hybrid sync
+└── monitoring/     # Logging, metrics, alerts
+```
+
+## Usage
+
+### Register an Integration
+
+```javascript
+const { IntegrationRegistry } = require('./src/integrations');
+
+const registry = new IntegrationRegistry();
+registry.register('crm', 'salesforce', require('./src/integrations/crm/salesforce'));
+
+await registry.initialize({
+  crm: {
+    enabled: true,
+    providers: ['salesforce'],
+    salesforce: {
+      loginUrl: 'https://login.salesforce.com',
+      auth: { /* ... */ }
+    }
+  }
+});
+```
+
+### Using an Integration
+
+```javascript
+const salesforce = registry.get('crm', 'salesforce');
+
+// Create a record
+await salesforce.createRecord('Account', {
+  Name: 'Acme Corp',
+  Industry: 'Technology'
+});
+
+// Query records
+const results = await salesforce.query('SELECT Id, Name FROM Account');
+```
+
+### Webhooks
+
+```javascript
+const { WebhooksModule } = require('./src/webhooks');
+
+const webhooks = new WebhooksModule();
+webhooks.incoming.register('crm_update', async (payload) => {
+  console.log('Received CRM update:', payload);
+});
+
+await webhooks.initialize({
+  incoming: { verifySignature: true },
+  outgoing: { maxRetries: 3 }
+});
+```
+
+### Sync
+
+```javascript
+const { SyncModule } = require('./src/sync');
+
+const sync = new SyncModule();
+await sync.initialize({ mode: 'hybrid', batchSize: 100 });
+
+await sync.sync('salesforce', 'hubspot', records, { priority: 'high' });
+```
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run start` | Start production server |
+| `npm run dev` | Start development server with nodemon |
+| `npm test` | Run all tests with coverage |
+| `npm run test:unit` | Run unit tests |
+| `npm run test:integration` | Run integration tests |
+| `npm run test:e2e` | Run end-to-end tests |
+| `npm run lint` | Run ESLint |
+| `npm run migrate` | Run database migrations |
+| `npm run setup` | Run initial setup |
+| `npm run deploy` | Deploy to current environment |
 
 ## Testing
 
 ```bash
-# Unit and integration tests
-python3 test_integration.py
+# Run all tests
+npm test
 
-# Smoke test (requires live WAHA instance)
-python3 smoke_test.py
+# Run specific test suite
+npm run test:unit
+npm run test:integration
+npm run test:e2e
 ```
 
-## Documentation
+## Environment Variables
 
-- Go-live checklist: `GOLIVE.md`
-- Cron schedule: `CRON.md`
-- Schema: `schema.sql`
+See `.env.example` for all available environment variables.
+
+## License
+
+MIT

@@ -1,0 +1,47 @@
+{
+  "extends": "default",
+  "project": {
+    "environment": "production",
+    "debug": false
+  },
+  "server": {
+    "port": 443,
+    "cors": {
+      "enabled": true,
+      "origins": ["https://bots.business"]
+    },
+    "rateLimit": {
+      "windowMs": 60000,
+      "max": 1000
+    }
+  },
+  "database": {
+    "primary": {
+      "host": "prod-db.example.com",
+      "port": 5432,
+      "name": "bots_business_db",
+      "pool": {
+        "min": 5,
+        "max": 50
+      }
+    },
+    "cache": {
+      "host": "prod-redis.example.com",
+      "port": 6379,
+      "ttl": 7200
+    }
+  },
+  "monitoring": {
+    "enabled": true,
+    "logLevel": "warn",
+    "alerts": {
+      "enabled": true,
+      "email": "alerts@bots.business"
+    }
+  },
+  "security": {
+    "jwtSecret": "${JWT_SECRET}",
+    "encryptionKey": "${ENCRYPTION_KEY}",
+    "allowedIPs": ["10.0.0.0/8", "172.16.0.0/12"]
+  }
+}
