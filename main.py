@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 from middleware import validate_config, log_event
 from webhook import handle_webhook
