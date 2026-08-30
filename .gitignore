@@ -3,5 +3,6 @@ __pycache__/
 .venv/
 .env
 .env.*
+!.env.example
 .terraform/
 .terraform.lock.hcl
