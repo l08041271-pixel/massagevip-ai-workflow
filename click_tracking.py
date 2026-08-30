@@ -138,17 +138,22 @@ def _correlate_lead(payload: dict) -> Optional[str]:
         return None
 
 
-def track_whatsapp_click(payload: dict) -> dict:
+def track_whatsapp_click(payload: dict, client_ip: str = "") -> dict:
     if not payload.get("source") and not payload.get("landing_page"):
         return {"error": "missing_source_and_landing_page", "status": "rejected"}
 
     lead_id = _correlate_lead(payload)
     local_payload = dict(payload)
+    if client_ip:
+        local_payload["ip"] = client_ip
     if lead_id:
         local_payload["lead_id"] = lead_id
 
     store = get_click_store()
-    return store.track(local_payload)
+    result = store.track(local_payload)
+    if not lead_id:
+        result["lead_correlated"] = False
+    return result
 
 
 def _verify_signature(body_bytes: bytes, signature: str) -> bool:
@@ -161,7 +166,7 @@ def _verify_signature(body_bytes: bytes, signature: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
-def handle_click_tracking(body_bytes: bytes, signature: str = "") -> tuple[int, dict[str, Any]]:
+def handle_click_tracking(body_bytes: bytes, signature: str = "", client_ip: str = "") -> tuple[int, dict[str, Any]]:
     if signature and not _verify_signature(body_bytes, signature):
         return 403, {"error": "invalid_signature"}
 
@@ -170,7 +175,7 @@ def handle_click_tracking(body_bytes: bytes, signature: str = "") -> tuple[int, 
     except (json.JSONDecodeError, ValueError):
         return 400, {"error": "bad_json"}
 
-    result = track_whatsapp_click(body)
+    result = track_whatsapp_click(body, client_ip)
     if result.get("error"):
         return 400, result
 

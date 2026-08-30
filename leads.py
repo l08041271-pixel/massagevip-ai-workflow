@@ -5,7 +5,7 @@ Provider-portable: business logic never imports provider SDKs directly.
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from middleware import log_event
@@ -241,8 +241,8 @@ class PostgresLeadStore(LeadStore):
             score=row[8] or 0,
             notes=row[9] or '',
             duplicate_of=row[10] or '',
-            created_at=row[11].isoformat() if hasattr(row[11], 'isoformat') else str(row[11]),
-            updated_at=row[12].isoformat() if hasattr(row[12], 'isoformat') else str(row[12]),
+            created_at=row[11].isoformat() if isinstance(row[11], (datetime, date)) else str(row[11]),
+            updated_at=row[12].isoformat() if isinstance(row[12], (datetime, date)) else str(row[12]),
         )
 
 

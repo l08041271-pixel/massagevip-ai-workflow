@@ -178,7 +178,7 @@ class UnifiedHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             params = parse_qs(parsed.query)
             status = params.get("status", [None])[0]
-            limit = int(params.get("limit", [100])[0])
+            limit = min(int(params.get("limit", [100])[0]), 500)
             leads = get_lead_store().list_leads(status, limit)
             self._send_json(200, {"status": "ok", "leads": [{"id": l.id, "phone": l.phone, "email": l.email, "name": l.name, "source": l.source, "campaign": l.campaign, "landing_page": l.landing_page, "status": l.status, "score": l.score, "notes": l.notes, "duplicate_of": l.duplicate_of, "created_at": l.created_at, "updated_at": l.updated_at} for l in leads]})
             return
@@ -194,7 +194,8 @@ class UnifiedHandler(BaseHTTPRequestHandler):
 
         if self.path == "/track/whatsapp-click":
             signature = self.headers.get("X-Hub-Signature-256", "")
-            status, response = handle_click_tracking(body_bytes, signature)
+            client_ip = self.client_address[0]
+            status, response = handle_click_tracking(body_bytes, signature, client_ip)
             self.send_response(status)
             self.end_headers()
             if response:
