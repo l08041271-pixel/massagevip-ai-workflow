@@ -17,8 +17,12 @@ from decision_engine import decide
 from actions import process_event
 from audit import log_decision, log_external_action
 from analytics import get_executive_summary
-from monitoring import HealthCheck, CircuitBreaker, retry_with_backoff
+from analytics_leads import get_lead_dashboard
+from click_tracking import handle_click_tracking
 from idempotency import mark_processed, IdempotencyRecord, send_to_dead_letter
+from leads import get_lead_store
+from monitoring import HealthCheck, CircuitBreaker, retry_with_backoff
+from typeform_client import get_typeform_provider
 from booking import initiate_booking, confirm_booking, cancel_booking
 from follow_up import schedule_followup, execute_followup
 from approval import create_approval_request, approve, reject
@@ -109,6 +113,33 @@ def _map_priority(action: str) -> str:
     return "P3"
 
 
+def check_leads() -> dict[str, Any]:
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        return {"status": "skipped", "reason": "no_database_url"}
+    try:
+        store = get_lead_store()
+        store.list_leads(limit=1)
+        return {"status": "healthy"}
+    except Exception as exc:
+        return {"status": "unhealthy", "error": str(exc)}
+
+
+def check_sheets() -> dict[str, Any]:
+    if not os.environ.get("GOOGLE_SHEETS_ID"):
+        return {"status": "skipped", "reason": "no_sheets_id"}
+    try:
+        import google.oauth2.service_account
+        import googleapiclient.discovery
+        return {"status": "configured"}
+    except ImportError:
+        return {"status": "unhealthy", "error": "google_libs_missing"}
+
+
+def handle_typeform_webhook(body_bytes: bytes, signature: str = "") -> tuple[int, dict[str, Any]]:
+    return get_typeform_provider().handle_typeform_webhook(body_bytes, signature)
+
+
 def _worker_loop() -> None:
     while True:
         try:
@@ -130,11 +161,26 @@ class UnifiedHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             health = HealthCheck.full()
+            health["checks"]["lead_store"] = check_leads()
+            health["checks"]["sheets"] = check_sheets()
             self._send_json(200, health)
             return
         if self.path == "/dashboard":
             summary = get_executive_summary()
             self._send_json(200, summary)
+            return
+        if self.path == "/dashboard/leads":
+            dashboard = get_lead_dashboard()
+            self._send_json(200, dashboard)
+            return
+        if self.path.startswith("/api/leads"):
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(self.path)
+            params = parse_qs(parsed.query)
+            status = params.get("status", [None])[0]
+            limit = int(params.get("limit", [100])[0])
+            leads = get_lead_store().list_leads(status, limit)
+            self._send_json(200, {"status": "ok", "leads": [{"id": l.id, "phone": l.phone, "email": l.email, "name": l.name, "source": l.source, "campaign": l.campaign, "landing_page": l.landing_page, "status": l.status, "score": l.score, "notes": l.notes, "duplicate_of": l.duplicate_of, "created_at": l.created_at, "updated_at": l.updated_at} for l in leads]})
             return
         if self.path == "/metrics":
             self._send_json(200, {"status": "ok", "service": "massagevip-automation"})
@@ -145,6 +191,25 @@ class UnifiedHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(content_length)
+
+        if self.path == "/track/whatsapp-click":
+            signature = self.headers.get("X-Hub-Signature-256", "")
+            status, response = handle_click_tracking(body_bytes, signature)
+            self.send_response(status)
+            self.end_headers()
+            if response:
+                self.wfile.write(json.dumps(response).encode())
+            return
+
+        if self.path == "/webhook/typeform":
+            signature = self.headers.get("Typeform-Signature", "")
+            status, response = handle_typeform_webhook(body_bytes, signature)
+            self.send_response(status)
+            self.end_headers()
+            if response:
+                self.wfile.write(json.dumps(response).encode())
+            return
+
         signature = self.headers.get("X-Hub-Signature-256", "")
         status, response = handle_webhook(body_bytes, signature)
         self.send_response(status)
