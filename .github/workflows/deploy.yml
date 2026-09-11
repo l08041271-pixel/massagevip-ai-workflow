@@ -14,10 +14,12 @@ concurrency:
 
 env:
   HEALTH_URL: ${{ secrets.PRODUCTION_HEALTH_URL }}
+  DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,16 +37,16 @@ jobs:
           python -m compileall -q .
 
       - name: Trigger Render deploy
-        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL != '' }}
-        env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: curl --fail --silent --show-error --retry 3 -X POST "$RENDER_DEPLOY_HOOK_URL"
+        if: ${{ env.DEPLOY_HOOK_URL != '' }}
+        run: |
+          curl --fail --silent --show-error --retry 3 --retry-delay 5 \
+            -X POST "$DEPLOY_HOOK_URL"
 
       - name: Wait for deployment
-        if: ${{ env.HEALTH_URL != '' }}
+        if: ${{ env.HEALTH_URL != '' && env.DEPLOY_HOOK_URL != '' }}
         run: sleep 30
 
       - name: Production health check
         if: ${{ env.HEALTH_URL != '' }}
         run: |
-          curl --fail --silent --show-error --retry 10 --retry-delay 10 --max-time 20 "$HEALTH_URL"
+          curl --fail --silent --show-error --retry 12 --retry-delay 10 --max-time 20 "$HEALTH_URL"
