@@ -1,0 +1,50 @@
+name: Production Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: true
+
+env:
+  HEALTH_URL: ${{ secrets.PRODUCTION_HEALTH_URL }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Validate application
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m compileall -q .
+
+      - name: Trigger Render deploy
+        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL != '' }}
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error --retry 3 -X POST "$RENDER_DEPLOY_HOOK_URL"
+
+      - name: Wait for deployment
+        if: ${{ env.HEALTH_URL != '' }}
+        run: sleep 30
+
+      - name: Production health check
+        if: ${{ env.HEALTH_URL != '' }}
+        run: |
+          curl --fail --silent --show-error --retry 10 --retry-delay 10 --max-time 20 "$HEALTH_URL"
