@@ -2,9 +2,9 @@
 MassageVIP Automation - Production Entrypoint
 Unified server: webhook ingestion + worker processing + analytics API
 """
+import hmac
 import json
 import os
-import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -17,7 +17,7 @@ from decision_engine import decide
 from actions import process_event
 from audit import log_decision, log_external_action
 from analytics import get_executive_summary
-from monitoring import HealthCheck, CircuitBreaker, retry_with_backoff
+from monitoring import HealthCheck, CircuitBreaker
 from idempotency import mark_processed, IdempotencyRecord, send_to_dead_letter
 from booking import initiate_booking, confirm_booking, cancel_booking
 from follow_up import schedule_followup, execute_followup
@@ -30,11 +30,12 @@ if _missing_env:
 _circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60.0)
 
 
-def _process_pending() -> None:
+def _process_pending() -> int:
     from webhook import drain_queue
     events = drain_queue()
     if not events:
-        return
+        return 0
+    processed = 0
     for event in events:
         try:
             cid = event.get("event_id", "")
@@ -85,6 +86,7 @@ def _process_pending() -> None:
                     pass
 
             mark_processed(cid, success=True)
+            processed += 1
         except Exception as exc:
             log_event("event_processing_failed", {"event_id": event.get("event_id"), "error": str(exc)}, level="error")
             mark_processed(event.get("event_id", ""), success=False, error=str(exc))
@@ -97,6 +99,7 @@ def _process_pending() -> None:
                 dead_letter=True,
             )
             send_to_dead_letter(record, str(exc))
+    return processed
 
 
 def _map_priority(action: str) -> str:
@@ -124,13 +127,16 @@ class UnifiedHandler(BaseHTTPRequestHandler):
 
     def _send_json(self, status: int, data: dict[str, Any]) -> None:
         self.send_response(status)
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
     def do_GET(self):
         if self.path == "/health":
             health = HealthCheck.full()
-            self._send_json(200, health)
+            statuses = [check.get("status") for check in health["checks"].values()]
+            healthy = all(status in ("healthy", "configured", "skipped") for status in statuses)
+            self._send_json(200 if healthy else 503, health)
             return
         if self.path == "/dashboard":
             summary = get_executive_summary()
@@ -143,11 +149,23 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        if self.path == "/internal/agent/cycle":
+            expected = os.environ.get("AGENT_CRON_TOKEN", "")
+            supplied = self.headers.get("Authorization", "")
+            expected_header = f"Bearer {expected}" if expected else ""
+            if not expected or not hmac.compare_digest(supplied, expected_header):
+                self._send_json(401, {"status": "unauthorized"})
+                return
+            processed = _process_pending()
+            self._send_json(200, {"status": "ok", "processed": processed, "timestamp": time.time()})
+            return
+
         content_length = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(content_length)
         signature = self.headers.get("X-Hub-Signature-256", "")
         status, response = handle_webhook(body_bytes, signature)
         self.send_response(status)
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
         if response:
             self.wfile.write(json.dumps(response).encode())
