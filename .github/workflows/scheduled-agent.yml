@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   agent-cycle:
+    if: ${{ secrets.PRODUCTION_HEALTH_URL != '' && secrets.PRODUCTION_AGENT_URL != '' && secrets.AGENT_CRON_TOKEN != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,7 +22,6 @@ jobs:
         env:
           HEALTH_URL: ${{ secrets.PRODUCTION_HEALTH_URL }}
         run: |
-          test -n "$HEALTH_URL"
           curl --fail --silent --show-error --retry 3 --retry-delay 5 --max-time 20 "$HEALTH_URL"
 
       - name: Execute protected agent cycle
@@ -29,8 +29,6 @@ jobs:
           AGENT_URL: ${{ secrets.PRODUCTION_AGENT_URL }}
           AGENT_TOKEN: ${{ secrets.AGENT_CRON_TOKEN }}
         run: |
-          test -n "$AGENT_URL"
-          test -n "$AGENT_TOKEN"
           curl --fail --silent --show-error --retry 3 --retry-delay 5 --max-time 60 \
             -X POST \
             -H "Authorization: Bearer $AGENT_TOKEN" \
