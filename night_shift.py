@@ -21,8 +21,10 @@ def db(query: str, params: tuple = (), fetch: bool = False):
     try:
         with conn.cursor() as cur:
             cur.execute(query, params)
-            return cur.fetchall() if fetch else None
-        conn.commit()
+            if fetch:
+                return cur.fetchall()
+            conn.commit()
+        return None
     finally:
         conn.close()
 
