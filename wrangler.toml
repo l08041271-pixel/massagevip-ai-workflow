@@ -1,0 +1,12 @@
+name = "massagevip-ai-workflow-edge"
+main = "cloudflare/worker.js"
+compatibility_date = "2026-10-15"
+workers_dev = true
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[vars]
+# Set ORIGIN_API_BASE as a Worker secret or variable to the HTTPS URL of the
+# existing Python service. Do not include a trailing slash.
+# Example: https://your-python-service.example.com
