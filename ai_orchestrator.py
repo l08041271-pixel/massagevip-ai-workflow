@@ -70,6 +70,21 @@ def ai_chat(system_prompt: str, user_prompt: str) -> str:
     return output.strip()
 
 
+async def ai_chat_async(system_prompt: str, user_prompt: str) -> str:
+    """Async text-agent entry point for callers already running an event loop."""
+    client, model_name, api_mode = _configure_agents_client()
+    agent = Agent(
+        name="MassageVIP Assistant",
+        instructions=system_prompt,
+        model=_agent_model(client, model_name, api_mode),
+    )
+    result = await Runner.run(agent, user_prompt)
+    output = result.final_output
+    if not isinstance(output, str):
+        raise RuntimeError("Agents SDK returned a non-text final output.")
+    return output.strip()
+
+
 def ai_structured(system_prompt: str, user_prompt: str, output_type: type[BaseModel]) -> dict[str, Any]:
     """Run an agent with a Pydantic output contract and return validated data."""
     client, model_name, api_mode = _configure_agents_client()
