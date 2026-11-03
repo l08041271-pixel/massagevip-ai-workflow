@@ -65,8 +65,11 @@ python main.py
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `AI_BASE_URL` | Yes | AI API base URL |
-| `AI_API_KEY` | Yes | AI API key |
+| `OPENAI_API_KEY` or `AI_API_KEY` | Yes | OpenAI API key; either variable is accepted |
+| `AI_BASE_URL` | No | Optional API base URL; defaults to the OpenAI API base URL |
+| `AI_MODEL` | No | Model name (default: `gpt-4.1-mini`) |
+| `AI_API_MODE` | No | `responses` (default) or `chat_completions` for compatible endpoints |
+| `AI_TRACING_ENABLED` | No | Set `true` to opt into SDK tracing; disabled by default to avoid transmitting lead data to traces |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
 | `WAHA_BASE_URL` | No | WAHA instance URL (e.g., `http://localhost:3000`) |
 | `WAHA_SESSION` | No | WAHA session name (default: `default`) |
