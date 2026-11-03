@@ -4,7 +4,7 @@ Runs as Render Workflows + Cron
 """
 import asyncio, json, os
 from render_sdk import Workflows, Retry
-from tasks import ai_chat
+from ai_orchestrator import ai_chat_async
 from control_plane import normalize_event, cheap_classifier, priority_score
 
 agents = Workflows(default_retry=Retry(max_retries=2, wait_duration_ms=2000, backoff_scaling=2.0))
@@ -22,7 +22,7 @@ async def hunter_agent(sources: list[dict]) -> dict:
             # LLM deep classify
             prompt = f"Classify intent/sentiment/lead_score 0-100 for: {e['content']['text'][:500]}. Return JSON {{intent,sentiment,lead_score,revenue_potential,relationship_value}}"
             try:
-                raw = ai_chat("You are classifier. JSON only.", prompt)
+                raw = await ai_chat_async("You are classifier. JSON only.", prompt)
                 ai = json.loads(raw)
             except: ai = {"revenue_potential":70,"relationship_value":50, **fast, "lead_score":80}
         else:
@@ -36,7 +36,7 @@ async def hunter_agent(sources: list[dict]) -> dict:
 @agents.task(name="outreach_agent")
 async def outreach_agent(qualified_event: dict) -> dict:
     prompt = f"Write warm WhatsApp/IG DM for lead: {json.dumps(qualified_event, ensure_ascii=False)}\nRules: concise, Arabic+English if needed, ask 1 question to book, no false promises. Return JSON {{reply, channel}}"
-    raw = ai_chat("You write high-converting outreach. JSON only.", prompt)
+    raw = await ai_chat_async("You write high-converting outreach. JSON only.", prompt)
     try: data=json.loads(raw)
     except: data={"reply": raw[:400], "channel": qualified_event["source"]}
     # NEVER auto-send: flag for human approval
