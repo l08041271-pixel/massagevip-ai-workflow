@@ -1,10 +1,8 @@
 import asyncio
 import json
-import os
-import urllib.request
-import urllib.error
 
 from render_sdk import Workflows, Retry
+from ai_orchestrator import ai_chat, ai_structured, QualificationOutput, ReplyOutput
 
 # Import control plane + agents to register all workflows together
 try:
@@ -21,46 +19,6 @@ app = Workflows(
     default_timeout=120,
     default_plan="starter",
 )
-
-
-def ai_chat(system_prompt: str, user_prompt: str) -> str:
-    """Call any OpenAI-compatible /v1/chat/completions endpoint."""
-    base_url = os.environ["AI_BASE_URL"].rstrip("/")
-    api_key = os.environ["AI_API_KEY"]
-    model = os.environ.get("AI_MODEL", "gpt-oss:120b-cloud")
-
-    payload = {
-        "model": model,
-        "temperature": 0.3,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
-
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"AI API HTTP {exc.code}: {body}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"AI API connection failed: {exc}") from exc
-
-    try:
-        return data["choices"][0]["message"]["content"].strip()
-    except (KeyError, IndexError, TypeError) as exc:
-        raise RuntimeError(f"Unexpected AI response: {data}") from exc
 
 
 @app.task(
@@ -83,15 +41,11 @@ reason: short string
 
 Do not invent customer information.
 """
-    raw = ai_chat(
-        "You are a precise CRM lead qualification engine. Output valid JSON only.",
+    return ai_structured(
+        "You are a precise CRM lead qualification engine. Use the provided output schema. Do not invent customer information.",
         prompt,
+        QualificationOutput,
     )
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"AI returned non-JSON qualification: {raw}") from exc
 
 
 @app.task(
@@ -122,15 +76,11 @@ Rules:
   "needs_human": true_or_false
 }}
 """
-    raw = ai_chat(
-        "You write safe, conversion-focused customer-service replies.",
+    return ai_structured(
+        "You write safe, conversion-focused customer-service replies. Follow the output schema. Never state that a booking is confirmed or invent availability.",
         prompt,
+        ReplyOutput,
     )
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"AI returned non-JSON reply: {raw}") from exc
 
 
 @app.task(
