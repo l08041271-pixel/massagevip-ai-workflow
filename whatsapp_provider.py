@@ -102,11 +102,12 @@ class DirectWhatsAppProvider(WhatsAppProvider):
         self.phone_id = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
         self.verify_token = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
         self.app_secret = os.environ.get("WHATSAPP_APP_SECRET", "")
+        self.api_version = os.environ.get("WHATSAPP_API_VERSION", "v24.0")
 
     def send_text(self, to_phone: str, message: str) -> dict[str, Any]:
         if not self.token or not self.phone_id:
             return {"status": "skipped", "reason": "missing_whatsapp_credentials"}
-        url = f"https://graph.facebook.com/v19.0/{self.phone_id}/messages"
+        url = f"https://graph.facebook.com/{self.api_version}/{self.phone_id}/messages"
         payload = {
             "messaging_product": "whatsapp",
             "to": to_phone,
@@ -172,7 +173,10 @@ def _reset_provider() -> None:
 def get_whatsapp_provider() -> WhatsAppProvider:
     global _provider
     if _provider is None:
-        if os.environ.get("WAHA_BASE_URL"):
+        selected = os.environ.get("WHATSAPP_PROVIDER", "").strip().lower()
+        if selected == "meta":
+            _provider = DirectWhatsAppProvider()
+        elif selected == "waha" or (not selected and os.environ.get("WAHA_BASE_URL")):
             _provider = WahaProvider()
         else:
             _provider = DirectWhatsAppProvider()
