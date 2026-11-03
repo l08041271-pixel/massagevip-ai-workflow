@@ -11,11 +11,15 @@ services:
     healthCheckPath: /health
     envVars:
       - key: AI_BASE_URL
-        sync: false
+        value: https://api.openai.com/v1
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        sync: false
+        value: gpt-4.1-mini
+      - key: AI_API_MODE
+        value: responses
+      - key: AI_TRACING_ENABLED
+        value: false
       - key: DATABASE_URL
         sync: false
       - key: WAHA_BASE_URL
