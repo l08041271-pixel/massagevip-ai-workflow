@@ -1,4 +1,5 @@
 """Unit tests for the Agents SDK adapter; no external API calls are made."""
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
@@ -30,11 +31,11 @@ class TestAgentsSDKAdapter(unittest.TestCase):
     @patch("ai_orchestrator.Runner.run")
     @patch("ai_orchestrator.Agent")
     @patch("ai_orchestrator._configure_agents_client")
-    async def test_ai_chat_async_uses_async_runner(self, configure, agent_cls, run_async):
+    def test_ai_chat_async_uses_async_runner(self, configure, agent_cls, run_async):
         configure.return_value = (MagicMock(), "test-model", "responses")
         run_async.return_value = SimpleNamespace(final_output="Async hello")
 
-        result = await ai_chat_async("Reply safely.", "Customer says hello.")
+        result = asyncio.run(ai_chat_async("Reply safely.", "Customer says hello."))
 
         self.assertEqual(result, "Async hello")
         run_async.assert_awaited_once()
