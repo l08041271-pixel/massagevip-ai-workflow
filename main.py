@@ -9,6 +9,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from middleware import validate_config, log_event
 from webhook import handle_webhook
@@ -132,17 +133,42 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def do_GET(self):
-        if self.path == "/health":
+        parsed = urlsplit(self.path)
+        if parsed.path == "/webhook":
+            params = {key: values[0] for key, values in parse_qs(parsed.query, keep_blank_values=True).items()}
+            provider = os.environ.get("WHATSAPP_PROVIDER", "meta").lower()
+            if provider != "meta":
+                self.send_response(404)
+                self.end_headers()
+                return
+            verify_token = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
+            if (
+                params.get("hub.mode") == "subscribe"
+                and verify_token
+                and hmac.compare_digest(params.get("hub.verify_token", ""), verify_token)
+                and params.get("hub.challenge")
+            ):
+                challenge = params["hub.challenge"].encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(challenge)))
+                self.end_headers()
+                self.wfile.write(challenge)
+            else:
+                self.send_response(403)
+                self.end_headers()
+            return
+        if parsed.path == "/health":
             health = HealthCheck.full()
             statuses = [check.get("status") for check in health["checks"].values()]
             healthy = all(status in ("healthy", "configured", "skipped") for status in statuses)
             self._send_json(200 if healthy else 503, health)
             return
-        if self.path == "/dashboard":
+        if parsed.path == "/dashboard":
             summary = get_executive_summary()
             self._send_json(200, summary)
             return
-        if self.path == "/metrics":
+        if parsed.path == "/metrics":
             self._send_json(200, {"status": "ok", "service": "massagevip-automation"})
             return
         self.send_response(404)
