@@ -49,18 +49,16 @@ def _normalize_whatsapp_payload(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _verify_signature(body_bytes: bytes, signature: str) -> bool:
-    if not signature:
-        return True
-    import hashlib, hmac
-    secret = os.environ.get("WHATSAPP_APP_SECRET", "") or os.environ.get("WAHA_WEBHOOK_SECRET", "")
-    if not secret:
-        return True
+    # Meta signs the exact raw request body with the app secret.
+    secret = os.environ.get("WHATSAPP_APP_SECRET", "")
+    if not secret or not signature or not signature.startswith("sha256="):
+        return False
     expected = "sha256=" + hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
 
 def handle_webhook(body_bytes: bytes, signature: str = "") -> tuple[int, dict[str, Any]]:
-    if signature and not _verify_signature(body_bytes, signature):
+    if not _verify_signature(body_bytes, signature):
         return 403, {"error": "invalid_signature"}
 
     try:
