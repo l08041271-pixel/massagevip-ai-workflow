@@ -1,4 +1,4 @@
 psycopg2-binary>=2.9
 google-api-python-client>=2.0
 google-auth>=2.0
-openai-agents 
+openai-agents>=0.2.0
