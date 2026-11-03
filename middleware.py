@@ -19,13 +19,16 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 REQUIRED_ENV = [
-    "AI_BASE_URL",
-    "AI_API_KEY",
     "DATABASE_URL",
 ]
 
 OPTIONAL_ENV = [
     "AI_MODEL",
+    "AI_BASE_URL",
+    "AI_API_KEY",
+    "OPENAI_API_KEY",
+    "AI_API_MODE",
+    "AI_TRACING_ENABLED",
     "WHATSAPP_VERIFY_TOKEN",
     "WHATSAPP_APP_SECRET",
     "WHATSAPP_PHONE_NUMBER_ID",
@@ -47,6 +50,8 @@ OPTIONAL_ENV = [
 
 def validate_config() -> list[str]:
     missing = [v for v in REQUIRED_ENV if not os.environ.get(v)]
+    if not (os.environ.get("OPENAI_API_KEY") or os.environ.get("AI_API_KEY")):
+        missing.append("OPENAI_API_KEY or AI_API_KEY")
     if missing:
         logger.error("Missing required environment variables: %s", ", ".join(missing))
     for v in OPTIONAL_ENV:
