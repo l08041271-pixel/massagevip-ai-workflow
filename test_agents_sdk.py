@@ -7,6 +7,7 @@ from ai_orchestrator import (
     QualificationOutput,
     ReplyOutput,
     ai_chat,
+    ai_chat_async,
     ai_structured,
     _agent_model,
 )
@@ -25,6 +26,18 @@ class TestAgentsSDKAdapter(unittest.TestCase):
         self.assertEqual(result, "Hello lead")
         agent_cls.assert_called_once()
         run_sync.assert_called_once()
+
+    @patch("ai_orchestrator.Runner.run")
+    @patch("ai_orchestrator.Agent")
+    @patch("ai_orchestrator._configure_agents_client")
+    async def test_ai_chat_async_uses_async_runner(self, configure, agent_cls, run_async):
+        configure.return_value = (MagicMock(), "test-model", "responses")
+        run_async.return_value = SimpleNamespace(final_output="Async hello")
+
+        result = await ai_chat_async("Reply safely.", "Customer says hello.")
+
+        self.assertEqual(result, "Async hello")
+        run_async.assert_awaited_once()
 
     @patch("ai_orchestrator.Runner.run_sync")
     @patch("ai_orchestrator.Agent")
