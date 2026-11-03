@@ -14,6 +14,7 @@ from agents import (
     OpenAIChatCompletionsModel,
     Runner,
     set_default_openai_client,
+    set_tracing_disabled,
 )
 
 from middleware import correlation_id, log_event, mask_secret
@@ -44,6 +45,7 @@ def _configure_agents_client() -> tuple[AsyncOpenAI, str, str]:
         raise RuntimeError("AI_API_MODE must be 'responses' or 'chat_completions'.")
     client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=90.0)
     set_default_openai_client(client)
+    set_tracing_disabled(disabled=os.environ.get("AI_TRACING_ENABLED", "false").lower() != "true")
     return client, model_name, api_mode
 
 
