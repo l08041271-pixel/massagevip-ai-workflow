@@ -111,7 +111,7 @@ def handle_ycloud_webhook(
     if not isinstance(provider_event_type, str) or not provider_event_type:
         return 400, {"error": "missing_event_type"}
 
-    endpoint_scope = expected_endpoint_id or endpoint_id_header or "default"
+    endpoint_scope = expected_endpoint_id or "default"
     dedupe_key = hashlib.sha256(
         f"ycloud:{endpoint_scope}:{provider_event_id}".encode("utf-8")
     ).hexdigest()
