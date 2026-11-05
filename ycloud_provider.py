@@ -29,8 +29,10 @@ class YCloudProvider:
             return "invalid_ycloud_sender_e164"
         return None
 
-    def send_text(self, to_phone: str, message: str) -> dict[str, Any]:
-        """Submit a free-form text message; caller must enforce WhatsApp's 24h window."""
+    def send_text(self, to_phone: str, message: str, service_window_open: bool = False) -> dict[str, Any]:
+        """Submit text only when the caller proves the recipient's 24h service window is open."""
+        if service_window_open is not True:
+            return {"status": "skipped", "reason": "customer_service_window_not_verified"}
         problem = self._configuration_error()
         if problem:
             return {"status": "skipped", "reason": problem}
