@@ -74,7 +74,7 @@ class TestYCloudProvider(unittest.TestCase):
             "YCLOUD_FROM": "+966500000001",
         }, clear=True):
             with patch("urllib.request.urlopen") as opener:
-                result = YCloudProvider().send_text("+966500000002", "hello", service_window_open=True)
+                result = YCloudProvider().send_text("+966500000002", "hello")
             self.assertEqual(result["reason"], "customer_service_window_not_verified")
             opener.assert_not_called()
 
@@ -95,7 +95,7 @@ class TestYCloudProvider(unittest.TestCase):
             response.__enter__.return_value = response
             response.__exit__.return_value = False
             with patch("urllib.request.urlopen", return_value=response) as opener:
-                result = YCloudProvider().send_text("+966500000002", "hello")
+                result = YCloudProvider().send_text("+966500000002", "hello", service_window_open=True)
             request = opener.call_args.args[0]
             self.assertEqual(request.full_url, "https://api.example.test/v2/whatsapp/messages/sendDirectly")
             self.assertEqual(request.get_header("X-api-key"), "synthetic-key")
@@ -104,6 +104,14 @@ class TestYCloudProvider(unittest.TestCase):
             })
             self.assertEqual(result["status"], "accepted")
             self.assertEqual(result["message_id"], "msg_1")
+
+    def test_provider_factory_selects_ycloud(self):
+        from whatsapp_provider import get_whatsapp_provider, _reset_provider
+        with patch.dict(os.environ, {"WHATSAPP_PROVIDER": "ycloud"}, clear=True):
+            _reset_provider()
+            provider = get_whatsapp_provider()
+            self.assertIsInstance(provider, YCloudProvider)
+        _reset_provider()
 
 
 if __name__ == "__main__":
