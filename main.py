@@ -12,6 +12,7 @@ from typing import Any
 
 from middleware import validate_config, log_event
 from webhook import handle_webhook
+from ycloud_webhook import handle_ycloud_webhook
 from ai_orchestrator import qualify, retrieve_context
 from decision_engine import decide
 from actions import process_event
@@ -149,6 +150,20 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        if self.path == "/webhooks/ycloud":
+            content_length = int(self.headers.get("Content-Length", 0))
+            if content_length <= 0 or content_length > 1_048_576:
+                self._send_json(413 if content_length > 1_048_576 else 400, {"error": "invalid_content_length"})
+                return
+            body_bytes = self.rfile.read(content_length)
+            status, response = handle_ycloud_webhook(
+                body_bytes,
+                self.headers.get("YCloud-Signature", ""),
+                self.headers.get("X-Webhook-Endpoint-ID", ""),
+            )
+            self._send_json(status, response)
+            return
+
         if self.path == "/internal/agent/cycle":
             expected = os.environ.get("AGENT_CRON_TOKEN", "")
             supplied = self.headers.get("Authorization", "")
