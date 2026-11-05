@@ -7,7 +7,7 @@ import hmac
 import json
 import os
 import threading
-from http.server import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 
 from middleware import correlation_id, log_event, mask_secret, validate_config
@@ -49,19 +49,18 @@ def _normalize_whatsapp_payload(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _verify_signature(body_bytes: bytes, signature: str) -> bool:
-    if not signature:
-        return True
-    import hashlib, hmac
-    secret = os.environ.get("WHATSAPP_APP_SECRET", "") or os.environ.get("WAHA_WEBHOOK_SECRET", "")
-    if not secret:
-        return True
+    # This route implements Meta's X-Hub-Signature-256 contract only.
+    # YCloud has a separate raw-body timestamped HMAC receiver.
+    secret = os.environ.get("WHATSAPP_APP_SECRET", "")
+    if not secret or not signature:
+        return False
     expected = "sha256=" + hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
 
 def handle_webhook(body_bytes: bytes, signature: str = "") -> tuple[int, dict[str, Any]]:
-    if signature and not _verify_signature(body_bytes, signature):
-        return 403, {"error": "invalid_signature"}
+    if not _verify_signature(body_bytes, signature):
+        return 401, {"error": "invalid_signature"}
 
     try:
         body = json.loads(body_bytes)
@@ -134,7 +133,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def start_webhook_server(port: int = 8080) -> threading.Thread:
-    import threading
     server = HTTPServer(("0.0.0.0", port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

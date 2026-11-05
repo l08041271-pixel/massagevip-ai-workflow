@@ -26,6 +26,20 @@ services:
         sync: false
       - key: WAHA_WEBHOOK_SECRET
         sync: false
+      - key: WHATSAPP_PROVIDER
+        sync: false
+      - key: YCLOUD_API_BASE_URL
+        sync: false
+      - key: YCLOUD_API_KEY
+        sync: false
+      - key: YCLOUD_FROM
+        sync: false
+      - key: YCLOUD_WEBHOOK_SECRET
+        sync: false
+      - key: YCLOUD_WEBHOOK_ENDPOINT_ID
+        sync: false
+      - key: YCLOUD_WEBHOOK_TOLERANCE_SECONDS
+        value: "300"
       - key: PYTHON_VERSION
         value: 3.11.0
 

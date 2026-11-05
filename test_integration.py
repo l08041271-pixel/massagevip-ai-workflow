@@ -120,19 +120,24 @@ class TestWebhookNormalization(unittest.TestCase):
     @patch("webhook._verify_signature", return_value=False)
     def test_webhook_rejects_bad_signature(self, _):
         status, _ = handle_webhook(b"{}", "bad_sig")
-        self.assertEqual(status, 403)
+        self.assertEqual(status, 401)
+
+    def test_webhook_rejects_missing_signature(self):
+        status, _ = handle_webhook(b"{}", "")
+        self.assertEqual(status, 401)
 
     def test_webhook_accepts_valid(self):
         with patch.dict(os.environ, {"WHATSAPP_VERIFY_TOKEN": "tok", "WHATSAPP_APP_SECRET": "secret"}):
-            with patch("webhook.check_idempotency", return_value=None):
-                with patch("webhook.persist_event", return_value=True):
-                    with patch("webhook.is_opted_out", return_value=False):
-                        with patch("webhook.enqueue_event"):
-                            status, resp = handle_webhook(json.dumps({
-                                "entry": [{"changes": [{"value": {"messages": [{"from": "966500000000", "type": "text", "text": {"body": "book"}}]}}]}]
-                            }).encode(), "")
-                            self.assertEqual(status, 200)
-                            self.assertEqual(resp["status"], "accepted")
+            with patch("webhook._verify_signature", return_value=True):
+                with patch("webhook.check_idempotency", return_value=None):
+                    with patch("webhook.persist_event", return_value=True):
+                        with patch("webhook.is_opted_out", return_value=False):
+                            with patch("webhook.enqueue_event"):
+                                status, resp = handle_webhook(json.dumps({
+                                    "entry": [{"changes": [{"value": {"messages": [{"from": "966500000000", "type": "text", "text": {"body": "book"}}]}}]}]
+                                }).encode(), "")
+                                self.assertEqual(status, 200)
+                                self.assertEqual(resp["status"], "accepted")
 
 
 class TestWhatsAppProvider(unittest.TestCase):
