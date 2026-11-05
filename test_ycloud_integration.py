@@ -67,9 +67,20 @@ class TestYCloudReceiver(unittest.TestCase):
 
 
 class TestYCloudProvider(unittest.TestCase):
+    def test_freeform_send_requires_verified_service_window(self):
+        with patch.dict(os.environ, {
+            "YCLOUD_API_KEY": "synthetic-key",
+            "YCLOUD_API_BASE_URL": "https://api.example.test/v2",
+            "YCLOUD_FROM": "+966500000001",
+        }, clear=True):
+            with patch("urllib.request.urlopen") as opener:
+                result = YCloudProvider().send_text("+966500000002", "hello", service_window_open=True)
+            self.assertEqual(result["reason"], "customer_service_window_not_verified")
+            opener.assert_not_called()
+
     def test_missing_config_skips(self):
         with patch.dict(os.environ, {}, clear=True):
-            result = YCloudProvider().send_text("+966500000000", "hello")
+            result = YCloudProvider().send_text("+966500000000", "hello", service_window_open=True)
             self.assertEqual(result["reason"], "missing_ycloud_configuration")
 
     def test_request_construction_and_accepted_response(self):
