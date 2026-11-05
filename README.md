@@ -1,120 +1,72 @@
 # MassageVIP Automation
 
-Production-ready WhatsApp lead automation system with AI qualification, human handoff, and executive dashboard.
+WhatsApp lead automation with AI qualification, human handoff, CRM workflows and an executive dashboard.
 
-## Architecture
+## WhatsApp provider selection
 
-```
-Customer
-  ↓
-WhatsApp (via WAHA)
-  ↓
-HTTPS Webhook
-  ↓
-Webhook Verification
-  ↓
-Event Normalization
-  ↓
-Idempotency
-  ↓
-Event Persistence
-  ↓
-CRM
-  ↓
-AI Orchestration
-  ├── Intent Detection
-  ├── Context Retrieval
-  ├── Qualification
-  ├── Confidence Scoring
-  └── Human Handoff
-  ↓
-Decision Engine
-  ↓
-Actions
-  ├── WhatsApp Response
-  ├── CRM Update
-  ├── Follow-up
-  └── Booking
-  ↓
-Verification
-  ↓
-Audit/Event Log
-  ↓
-Analytics / CEO Dashboard
-```
+Set exactly one provider using `WHATSAPP_PROVIDER`:
 
-## Quick Start
+- `ycloud` — YCloud API and signed YCloud webhook receiver.
+- `meta` — direct Meta WhatsApp Cloud API (legacy).
+- `waha` — WAHA (legacy).
 
-### Prerequisites
+For YCloud, set:
 
-- Python 3.11+
-- PostgreSQL
-- WAHA (WhatsApp HTTP API) or WhatsApp Business API credentials
-- AI API endpoint (OpenAI-compatible)
+| Variable | Required | Description |
+|---|---:|---|
+| `WHATSAPP_PROVIDER` | Yes | `ycloud` |
+| `YCLOUD_API_KEY` | Yes | YCloud server-side API key; sent as `X-API-Key` |
+| `YCLOUD_FROM_NUMBER` | Yes | Business sender number in E.164 format |
+| `YCLOUD_WEBHOOK_SECRET` | Yes | Secret for the configured YCloud webhook endpoint |
+| `YCLOUD_WEBHOOK_ENDPOINT_ID` | Recommended | Endpoint ID returned by YCloud; used to bind receiver to the configured endpoint |
+| `YCLOUD_API_BASE_URL` | No | Defaults to `https://api.ycloud.com/v2` |
 
-### Local Install
+Configure the YCloud endpoint to send these events to:
+
+`https://YOUR_PUBLIC_HOST/webhooks/ycloud`
+
+Subscribe to:
+
+- `whatsapp.inbound_message.received`
+- `whatsapp.message.updated`
+
+The receiver verifies `YCloud-Signature` against the exact raw request bytes before parsing JSON. It persists events using the provider event ID scoped to the configured endpoint. Only inbound-message events enter the AI lead queue; outbound status events are stored without being treated as new leads.
+
+## Important delivery semantics
+
+The YCloud adapter uses queued `POST /v2/whatsapp/messages`. An `accepted` response means YCloud accepted the submission, not that WhatsApp delivered it. Track final status through `whatsapp.message.updated`.
+
+The adapter does not automatically retry message POST requests. If a transport timeout occurs, the outcome is ambiguous; reconcile using the YCloud message/event record before attempting another send.
+
+Free-form WhatsApp messages are subject to the 24-hour customer-service window. Outside that window, use an approved template. Template lifecycle and template-send support must be implemented and tested separately before enabling outbound business-initiated messages.
+
+## Local install
+
+Python 3.11+ and PostgreSQL are required.
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+psql "$DATABASE_URL" -f schema.sql
 python main.py
 ```
 
-### Environment Variables
+## Endpoints
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `AI_BASE_URL` | Yes | AI API base URL |
-| `AI_API_KEY` | Yes | AI API key |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `WAHA_BASE_URL` | No | WAHA instance URL (e.g., `http://localhost:3000`) |
-| `WAHA_SESSION` | No | WAHA session name (default: `default`) |
-| `WAHA_API_KEY` | No | WAHA API key |
-| `WAHA_WEBHOOK_SECRET` | No | Webhook verification secret |
-| `WHATSAPP_ACCESS_TOKEN` | No | Direct WhatsApp API token |
-| `WHATSAPP_PHONE_NUMBER_ID` | No | Direct WhatsApp phone ID |
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/webhooks/ycloud` | POST | YCloud signed webhook receiver |
+| `/webhook` | POST | Legacy Meta/WAHA-compatible receiver; Meta signature required |
+| `/health` | GET | Dependency health |
+| `/dashboard` | GET | Executive summary |
+| `/metrics` | GET | Basic service metrics |
 
-### Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/webhook` | POST | WhatsApp webhook ingestion |
-| `/health` | GET | Health check with dependency status |
-| `/dashboard` | GET | Executive summary metrics |
-| `/metrics` | GET | Service metrics |
-
-## Deployment
-
-### Render
-
-See `render.yaml` for service configuration. Deploy with:
-
-1. Push code to GitHub
-2. Connect repository to Render
-3. Render will create `automation-worker` and `waha` services
-4. Set environment variables in Render dashboard
-
-### Database
-
-Run `schema.sql` against your PostgreSQL instance:
+## Tests
 
 ```bash
-psql -U app -d massagevip -f schema.sql
-```
-
-## Testing
-
-```bash
-# Unit and integration tests
+python -m unittest test_ycloud.py
 python3 test_integration.py
-
-# Smoke test (requires live WAHA instance)
-python3 smoke_test.py
 ```
 
-## Documentation
-
-- Go-live checklist: `GOLIVE.md`
-- Cron schedule: `CRON.md`
-- Schema: `schema.sql`
+Use synthetic fixtures and mocked HTTP transports. Do not run live sends as part of ordinary tests.
