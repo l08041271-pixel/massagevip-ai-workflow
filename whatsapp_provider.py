@@ -172,8 +172,14 @@ def _reset_provider() -> None:
 def get_whatsapp_provider() -> WhatsAppProvider:
     global _provider
     if _provider is None:
-        if os.environ.get("WAHA_BASE_URL"):
+        selected = os.environ.get("WHATSAPP_PROVIDER", "").strip().lower()
+        if selected == "ycloud":
+            from ycloud_provider import YCloudProvider
+            _provider = YCloudProvider()
+        elif selected == "waha" or (not selected and os.environ.get("WAHA_BASE_URL")):
             _provider = WahaProvider()
-        else:
+        elif selected in ("", "meta", "cloud_api"):
             _provider = DirectWhatsAppProvider()
+        else:
+            raise ValueError("Unsupported WHATSAPP_PROVIDER; use ycloud, waha, or meta")
     return _provider
