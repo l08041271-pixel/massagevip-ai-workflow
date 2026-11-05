@@ -18,8 +18,10 @@ from ai_orchestrator import ai_chat
 from whatsapp_provider import get_whatsapp_provider
 
 
-def _whatsapp_send(to_phone: str, message: str) -> dict[str, Any]:
+def _whatsapp_send(to_phone: str, message: str, service_window_open: bool = False) -> dict[str, Any]:
     provider = get_whatsapp_provider()
+    if provider.__class__.__name__ == "YCloudProvider":
+        return provider.send_text(to_phone, message, service_window_open=service_window_open)
     return provider.send_text(to_phone, message)
 
 
@@ -81,7 +83,10 @@ def execute_action(event: dict[str, Any], decision: Any) -> dict[str, Any]:
     if decision.action in ("reply_and_book", "reply_and_nurture", "reply_with_availability", "book"):
         reply = generate_safe_reply(event, {"lead_score": decision.confidence, "intent": event.get("intent", "general")})
         if phone:
-            send_result = _whatsapp_send(phone, reply)
+            send_result = _whatsapp_send(
+                phone, reply,
+                service_window_open=event.get("customer_service_window_open") is True,
+            )
             result["whatsapp"] = send_result
         else:
             result["whatsapp"] = {"status": "skipped", "reason": "no_phone"}
