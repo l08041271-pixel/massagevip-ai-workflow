@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from ycloud_webhook import verify_ycloud_signature, _normalise_event
+from ycloud_provider import YCloudProvider
 
 
 class TestYCloudSignature(unittest.TestCase):
@@ -66,6 +67,38 @@ class TestYCloudNormalization(unittest.TestCase):
         normalized = _normalise_event(event)
         self.assertEqual(normalized["event_type"], "status")
         self.assertEqual(normalized["text"], "")
+
+
+class TestYCloudProvider(unittest.TestCase):
+    @patch.dict("os.environ", {
+        "YCLOUD_API_KEY": "synthetic-key",
+        "YCLOUD_FROM_NUMBER": "+966500000001",
+        "YCLOUD_API_BASE_URL": "https://api.ycloud.com/v2",
+    })
+    @patch("urllib.request.urlopen")
+    def test_send_text_uses_ycloud_queued_endpoint(self, mock_urlopen):
+        class FakeResponse:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self):
+                return b'{"id":"synthetic-message-id"}'
+
+        mock_urlopen.return_value = FakeResponse()
+        provider = YCloudProvider()
+        result = provider.send_text("+966500000002", "Hello")
+        self.assertEqual(result["status"], "accepted")
+        request = mock_urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api.ycloud.com/v2/whatsapp/messages")
+        self.assertEqual(request.get_header("X-api-key"), "synthetic-key")
+        self.assertEqual(json.loads(request.data.decode())["type"], "text")
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_send_text_skips_without_configuration(self):
+        result = YCloudProvider().send_text("+966500000002", "Hello")
+        self.assertEqual(result["status"], "skipped")
 
 
 if __name__ == "__main__":
