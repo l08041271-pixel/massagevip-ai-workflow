@@ -57,7 +57,7 @@ python main.py
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/webhooks/ycloud` | POST | YCloud signed webhook receiver |
-| `/webhook` | POST | Legacy Meta/WAHA-compatible receiver; Meta signature required |
+| `/webhook` | POST | Legacy Meta receiver; Meta signature required (WAHA ingress is not enabled by this route) |
 | `/health` | GET | Dependency health |
 | `/dashboard` | GET | Executive summary |
 | `/metrics` | GET | Basic service metrics |
