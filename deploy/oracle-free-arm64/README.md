@@ -90,11 +90,11 @@ Set the generated value as POSTGRES_PASSWORD. Set the actual AI provider key and
 From the repository root:
 
 ~~~bash
-docker compose -f deploy/oracle-free-arm64/compose.yaml config
-docker compose -f deploy/oracle-free-arm64/compose.yaml build
-docker compose -f deploy/oracle-free-arm64/compose.yaml up -d
-docker compose -f deploy/oracle-free-arm64/compose.yaml ps
-docker compose -f deploy/oracle-free-arm64/compose.yaml logs --tail=100 app db cloudflared
+docker compose --project-directory . -f deploy/oracle-free-arm64/compose.yaml config
+docker compose --project-directory . -f deploy/oracle-free-arm64/compose.yaml build
+docker compose --project-directory . -f deploy/oracle-free-arm64/compose.yaml up -d
+docker compose --project-directory . -f deploy/oracle-free-arm64/compose.yaml ps
+docker compose --project-directory . -f deploy/oracle-free-arm64/compose.yaml logs --tail=100 app db cloudflared
 ~~~
 
 The database schema is mounted into PostgreSQL's first-initialization directory. It runs only when the data volume is empty. For an existing database, take a backup and apply migrations deliberately; do not delete the volume to force schema initialization.
@@ -114,8 +114,8 @@ The database schema is mounted into PostgreSQL's first-initialization directory.
 Useful commands:
 
 ~~~bash
-docker compose -f deploy/oracle-free-arm64/compose.yaml ps
-docker compose -f deploy/oracle-free-arm64/compose.yaml logs --since=15m
+docker compose --project-directory . -f deploy/oracle-free-arm64/compose.yaml ps
+docker compose --project-directory . -f deploy/oracle-free-arm64/compose.yaml logs --since=15m
 docker stats --no-stream
 ~~~
 
