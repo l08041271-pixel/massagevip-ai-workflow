@@ -1,0 +1,6 @@
+{"session_id":"eval-booking-en","user_transcript":"I want to book a massage tonight at 8pm","expected_intent":"booking","expected_handoff":false}
+{"session_id":"eval-pricing-en","user_transcript":"How much does a massage cost?","expected_intent":"pricing","expected_handoff":false}
+{"session_id":"eval-availability-en","user_transcript":"Are you available tomorrow evening?","expected_intent":"availability","expected_handoff":false}
+{"session_id":"eval-handoff-en","user_transcript":"Please let me speak to a human representative","expected_intent":"general","expected_handoff":true}
+{"session_id":"eval-spam-en","user_transcript":"http://spam.example buy","expected_intent":"spam","expected_handoff":false}
+{"session_id":"eval-booking-ar","user_transcript":"أريد حجز موعد غداً","expected_intent":"booking","expected_handoff":false}
