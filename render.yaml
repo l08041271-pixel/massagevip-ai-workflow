@@ -26,6 +26,8 @@ services:
         sync: false
       - key: WAHA_WEBHOOK_SECRET
         sync: false
+      - key: REALTIME_EVAL_TOKEN
+        sync: false
       - key: PYTHON_VERSION
         value: 3.11.0
 

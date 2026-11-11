@@ -22,6 +22,7 @@ from idempotency import mark_processed, IdempotencyRecord, send_to_dead_letter
 from booking import initiate_booking, confirm_booking, cancel_booking
 from follow_up import schedule_followup, execute_followup
 from approval import create_approval_request, approve, reject
+from realtime_eval.evaluator import evaluate_trace
 
 _missing_env = validate_config()
 if _missing_env:
@@ -149,6 +150,37 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        if self.path == "/realtime/evals":
+            expected = os.environ.get("REALTIME_EVAL_TOKEN", "")
+            supplied = self.headers.get("Authorization", "")
+            expected_header = f"Bearer {expected}" if expected else ""
+            if not expected:
+                self._send_json(503, {"status": "disabled", "reason": "REALTIME_EVAL_TOKEN is not configured"})
+                return
+            if not hmac.compare_digest(supplied, expected_header):
+                self._send_json(401, {"status": "unauthorized"})
+                return
+            try:
+                content_length = int(self.headers.get("Content-Length", 0))
+                if content_length <= 0 or content_length > 1_000_000:
+                    self._send_json(413, {"status": "invalid_payload_size"})
+                    return
+                trace = json.loads(self.rfile.read(content_length).decode("utf-8"))
+                result = evaluate_trace(trace)
+            except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                self._send_json(400, {"status": "invalid_trace", "error": str(exc)})
+                return
+            log_event("realtime_eval_completed", {
+                "session_id": result.get("session_id"),
+                "passed": result.get("passed"),
+                "score": result.get("score"),
+                "intent": result.get("intent"),
+                "human_handoff": result.get("human_handoff"),
+                "latency_ms": result.get("latency_ms"),
+            })
+            self._send_json(200, result)
+            return
+
         if self.path == "/internal/agent/cycle":
             expected = os.environ.get("AGENT_CRON_TOKEN", "")
             supplied = self.headers.get("Authorization", "")
