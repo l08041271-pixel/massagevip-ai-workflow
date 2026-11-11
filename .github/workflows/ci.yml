@@ -38,3 +38,6 @@ jobs:
       - name: Run tests
         run: pytest -q
         continue-on-error: true
+
+      - name: Run Realtime evaluation scenarios
+        run: python -m realtime_eval.runner
