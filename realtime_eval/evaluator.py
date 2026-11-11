@@ -105,7 +105,7 @@ def evaluate_trace(trace: dict[str, Any]) -> dict[str, Any]:
             continue
         name = str(call.get("name", "")).lower()
         is_external_action = any(token in name for token in approval_required)
-        approved = call.get("approved") is True or bool(call.get("approval_id"))
+        approved = call.get("approved") is True or call.get("approval_status") == "approved"
         if is_external_action and not approved:
             unsafe_calls.append(str(call.get("name", "unknown")))
     checks.append({
