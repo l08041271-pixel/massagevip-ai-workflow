@@ -162,7 +162,7 @@ curl -X POST "$APP_URL/realtime/evals" \
 You can provide `events` containing Realtime transcription events instead of `user_transcript`.
 The evaluator returns intent, handoff, latency, approval-gate checks, and an aggregate score.
 External-action tool calls (send, booking, cancellation, payment, or WhatsApp actions) fail evaluation
-unless the trace marks them `approved: true` or supplies an `approval_id`.
+unless the trace marks them `approved: true` or `approval_status: "approved"`.
 
 The endpoint writes only evaluation metadata to structured logs; it does not log transcript text.
 Do not include customer phone numbers, names, or other unnecessary personal data in evaluation traces.
