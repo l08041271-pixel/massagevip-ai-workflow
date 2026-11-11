@@ -118,3 +118,57 @@ python3 smoke_test.py
 - Go-live checklist: `GOLIVE.md`
 - Cron schedule: `CRON.md`
 - Schema: `schema.sql`
+
+
+## Realtime session evaluations
+
+The Realtime evaluation adapter grades completed session traces without sending WhatsApp messages,
+creating bookings, or mutating CRM records.
+
+### Run the checked-in scenarios
+
+```bash
+python -m realtime_eval.runner
+pytest -q test_realtime_eval.py
+```
+
+The JSONL dataset covers booking, pricing, availability, human handoff, spam, and Arabic booking intent.
+You can also pass an exported Realtime trace JSONL file to the runner:
+
+```bash
+python -m realtime_eval.runner path/to/realtime-traces.jsonl
+```
+
+### Submit a completed session trace
+
+Set a strong `REALTIME_EVAL_TOKEN` secret in the deployment environment. The endpoint is disabled
+until this token is configured.
+
+```bash
+curl -X POST "$APP_URL/realtime/evals" \
+  -H "Authorization: Bearer $REALTIME_EVAL_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "session_id": "rt_session_123",
+    "user_transcript": "I want to book a massage tonight",
+    "expected_intent": "booking",
+    "expected_handoff": false,
+    "latency_ms": 820,
+    "max_latency_ms": 1500,
+    "tool_calls": []
+  }'
+```
+
+You can provide `events` containing Realtime transcription events instead of `user_transcript`.
+The evaluator returns intent, handoff, latency, approval-gate checks, and an aggregate score.
+External-action tool calls (send, booking, cancellation, payment, or WhatsApp actions) fail evaluation
+unless the trace marks them `approved: true` or supplies an `approval_id`.
+
+The endpoint writes only evaluation metadata to structured logs; it does not log transcript text.
+Do not include customer phone numbers, names, or other unnecessary personal data in evaluation traces.
+
+### Environment
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `REALTIME_EVAL_TOKEN` | For API endpoint | Bearer token protecting `POST /realtime/evals` |
