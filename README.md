@@ -49,6 +49,7 @@ python main.py
 | `AI_BASE_URL` | Yes | AI API base URL |
 | `AI_API_KEY` | Yes | AI API key |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `WHATSAPP_PROVIDER` | No | Set to `meta` to select Meta even if legacy WAHA variables remain configured |
 | `WHATSAPP_ACCESS_TOKEN` | Meta | Meta system-user access token |
 | `WHATSAPP_PHONE_NUMBER_ID` | Meta | WhatsApp Business phone-number ID |
 | `WHATSAPP_VERIFY_TOKEN` | Meta | Private webhook verification token |
