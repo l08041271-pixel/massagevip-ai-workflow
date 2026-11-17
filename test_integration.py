@@ -119,6 +119,7 @@ class TestWebhookNormalization(unittest.TestCase):
         norm = _normalize_whatsapp_payload(body)
         self.assertEqual(norm["text"], "")
 
+    @patch.dict(os.environ, {"WHATSAPP_APP_SECRET": "secret"}, clear=True)
     @patch("webhook._verify_signature", return_value=False)
     def test_webhook_rejects_bad_signature(self, _):
         status, _ = handle_webhook(b"{}", "bad_sig")
