@@ -236,7 +236,8 @@ def _reset_provider() -> None:
 def get_whatsapp_provider() -> WhatsAppProvider:
     global _provider
     if _provider is None:
-        if os.environ.get("WAHA_BASE_URL"):
+        configured_provider = os.environ.get("WHATSAPP_PROVIDER", "").strip().lower()
+        if configured_provider == "waha" or (not configured_provider and os.environ.get("WAHA_BASE_URL")):
             _provider = WahaProvider()
         else:
             _provider = DirectWhatsAppProvider()
