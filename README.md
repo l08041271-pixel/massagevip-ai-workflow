@@ -1,46 +1,27 @@
 # MassageVIP Automation
 
-Production-ready WhatsApp lead automation system with AI qualification, human handoff, and executive dashboard.
+Production-oriented WhatsApp lead automation with AI qualification, human handoff, CRM persistence, booking workflow, and executive dashboard.
 
 ## Architecture
 
 ```
 Customer
   ↓
-WhatsApp (via WAHA)
+Meta WhatsApp Cloud API (or legacy WAHA provider)
   ↓
-HTTPS Webhook
+HTTPS /webhook
   ↓
-Webhook Verification
+Meta GET verification + POST HMAC signature validation
   ↓
-Event Normalization
+Event normalization + message/status separation
   ↓
-Idempotency
+Idempotency + PostgreSQL event persistence
   ↓
-Event Persistence
+CRM → AI qualification → human handoff / booking workflow
   ↓
-CRM
+Meta messages endpoint → customer
   ↓
-AI Orchestration
-  ├── Intent Detection
-  ├── Context Retrieval
-  ├── Qualification
-  ├── Confidence Scoring
-  └── Human Handoff
-  ↓
-Decision Engine
-  ↓
-Actions
-  ├── WhatsApp Response
-  ├── CRM Update
-  ├── Follow-up
-  └── Booking
-  ↓
-Verification
-  ↓
-Audit/Event Log
-  ↓
-Analytics / CEO Dashboard
+Audit log + analytics dashboard
 ```
 
 ## Quick Start
@@ -49,7 +30,7 @@ Analytics / CEO Dashboard
 
 - Python 3.11+
 - PostgreSQL
-- WAHA (WhatsApp HTTP API) or WhatsApp Business API credentials
+- Meta WhatsApp Business Platform credentials (or existing WAHA deployment)
 - AI API endpoint (OpenAI-compatible)
 
 ### Local Install
@@ -64,40 +45,41 @@ python main.py
 ### Environment Variables
 
 | Variable | Required | Description |
-|----------|----------|-------------|
+|---|---|---|
 | `AI_BASE_URL` | Yes | AI API base URL |
 | `AI_API_KEY` | Yes | AI API key |
 | `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `WAHA_BASE_URL` | No | WAHA instance URL (e.g., `http://localhost:3000`) |
-| `WAHA_SESSION` | No | WAHA session name (default: `default`) |
-| `WAHA_API_KEY` | No | WAHA API key |
-| `WAHA_WEBHOOK_SECRET` | No | Webhook verification secret |
-| `WHATSAPP_ACCESS_TOKEN` | No | Direct WhatsApp API token |
-| `WHATSAPP_PHONE_NUMBER_ID` | No | Direct WhatsApp phone ID |
+| `WHATSAPP_ACCESS_TOKEN` | Meta | Meta system-user access token |
+| `WHATSAPP_PHONE_NUMBER_ID` | Meta | WhatsApp Business phone-number ID |
+| `WHATSAPP_VERIFY_TOKEN` | Meta | Private webhook verification token |
+| `WHATSAPP_APP_SECRET` | Meta | Meta app secret for POST signature validation |
+| `WHATSAPP_GRAPH_API_VERSION` | No | Graph API version pin (default `v27.0`) |
+| `WAHA_BASE_URL` | WAHA | Set only when retaining the WAHA provider |
+| `WAHA_SESSION` | WAHA | WAHA session name |
+| `WAHA_API_KEY` | WAHA | WAHA API key |
+| `WAHA_WEBHOOK_SECRET` | WAHA | WAHA webhook secret |
 
 ### Endpoints
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/webhook` | POST | WhatsApp webhook ingestion |
-| `/health` | GET | Health check with dependency status |
+|---|---|---|
+| `/webhook` | GET | Meta webhook verification handshake |
+| `/webhook` | POST | Signed WhatsApp webhook ingestion |
+| `/health` | GET | Health check |
 | `/dashboard` | GET | Executive summary metrics |
 | `/metrics` | GET | Service metrics |
 
+## Meta Cloud API
+
+See [META_WHATSAPP_SETUP.md](META_WHATSAPP_SETUP.md) for Meta app onboarding, secure environment setup, webhook registration, supported message behavior, and verification commands.
+
 ## Deployment
 
-### Render
+Existing Render configuration is retained. Review `DEPLOYMENT.md` and configure secrets in the hosting dashboard; do not commit credentials.
 
-See `render.yaml` for service configuration. Deploy with:
+## Database
 
-1. Push code to GitHub
-2. Connect repository to Render
-3. Render will create `automation-worker` and `waha` services
-4. Set environment variables in Render dashboard
-
-### Database
-
-Run `schema.sql` against your PostgreSQL instance:
+Run `schema.sql` against the existing PostgreSQL instance when setting up a new database:
 
 ```bash
 psql -U app -d massagevip -f schema.sql
@@ -106,15 +88,8 @@ psql -U app -d massagevip -f schema.sql
 ## Testing
 
 ```bash
-# Unit and integration tests
+python3 -m unittest test_meta_whatsapp.py
 python3 test_integration.py
-
-# Smoke test (requires live WAHA instance)
-python3 smoke_test.py
 ```
 
-## Documentation
-
-- Go-live checklist: `GOLIVE.md`
-- Cron schedule: `CRON.md`
-- Schema: `schema.sql`
+See `GOLIVE.md` for the broader deployment checklist.
