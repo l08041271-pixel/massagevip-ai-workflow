@@ -1,31 +1,22 @@
 """
-WhatsApp webhook verification and HTTPS event ingestion.
-Provider-portable boundary: webhook transport isolated from business logic.
+Meta/WAHA webhook verification and event ingestion.
+Meta requests are authenticated with X-Hub-Signature-256 over the raw body.
 """
 import hashlib
 import hmac
 import json
 import os
 import threading
-from http.server import BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from urllib.parse import parse_qs
 
-from middleware import correlation_id, log_event, mask_secret, validate_config
+from middleware import correlation_id, log_event, mask_secret
 from idempotency import (
-    check_idempotency,
-    generate_dedupe_key,
-    generate_event_id,
-    is_opted_out,
-    mark_processed,
-    persist_event,
-    send_to_dead_letter,
-    IdempotencyRecord,
+    check_idempotency, generate_dedupe_key, generate_event_id, is_opted_out,
+    mark_processed, persist_event, send_to_dead_letter, IdempotencyRecord,
 )
 from whatsapp_provider import get_whatsapp_provider
-
-VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
-APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
-PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
 
 _pending_queue: list[dict[str, Any]] = []
 _queue_lock = threading.Lock()
@@ -48,93 +39,140 @@ def _normalize_whatsapp_payload(body: dict[str, Any]) -> dict[str, Any]:
     return _provider.normalize_incoming(body)
 
 
+def _normalize_whatsapp_payloads(body: dict[str, Any]) -> list[dict[str, Any]]:
+    normalizer = getattr(_provider, "normalize_incoming_events", None)
+    if callable(normalizer):
+        return normalizer(body)
+    normalized = _normalize_whatsapp_payload(body)
+    return [normalized] if normalized.get("event_type") == "message" else []
+
+
+def verify_webhook_challenge(query: dict[str, str]) -> tuple[int, str]:
+    if _provider.verify_webhook(query):
+        return 200, query.get("hub.challenge", "")
+    return 403, "forbidden"
+
+
 def _verify_signature(body_bytes: bytes, signature: str) -> bool:
-    if not signature:
-        return True
-    import hashlib, hmac
-    secret = os.environ.get("WHATSAPP_APP_SECRET", "") or os.environ.get("WAHA_WEBHOOK_SECRET", "")
-    if not secret:
-        return True
-    expected = "sha256=" + hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()
+    # Keep legacy WAHA deployments operational; Meta mode is fail-closed.
+    if os.environ.get("WAHA_BASE_URL"):
+        secret = os.environ.get("WAHA_WEBHOOK_SECRET", "")
+        if not secret or not signature:
+            return True
+    else:
+        secret = os.environ.get("WHATSAPP_APP_SECRET", "")
+        if not secret or not signature:
+            return False
+    expected = "sha256=" + hmac.new(secret.encode("utf-8"), body_bytes, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, signature)
 
 
 def handle_webhook(body_bytes: bytes, signature: str = "") -> tuple[int, dict[str, Any]]:
-    if signature and not _verify_signature(body_bytes, signature):
-        return 403, {"error": "invalid_signature"}
+    if not os.environ.get("WAHA_BASE_URL") and not os.environ.get("WHATSAPP_APP_SECRET"):
+        return 503, {"error": "webhook_signature_validation_not_configured"}
+    if not _verify_signature(body_bytes, signature):
+        return 401, {"error": "invalid_signature"}
 
     try:
         body = json.loads(body_bytes)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return 400, {"error": "bad_json"}
+    if not isinstance(body, dict):
+        return 400, {"error": "bad_payload"}
 
     cid = correlation_id()
-    log_event("webhook_received", {"correlation_id": cid, "keys": list(body.keys())})
+    log_event("webhook_received", {"correlation_id": cid, "provider": "waha" if os.environ.get("WAHA_BASE_URL") else "meta"})
 
-    normalized = _normalize_whatsapp_payload(body)
-    normalized["event_id"] = generate_event_id(normalized["source"], normalized.get("user_id", "unknown"))
-    normalized["dedupe_key"] = generate_dedupe_key(
-        normalized["source"], normalized.get("user_id", ""), normalized.get("text", "")
-    )
+    # Delivery/read/failure receipts are not inbound leads. Acknowledge and log
+    # minimal identifiers; do not send them through AI qualification.
+    status_count = 0
+    for entry in body.get("entry") or []:
+        for change in entry.get("changes") or []:
+            value = change.get("value") or {}
+            for status_event in value.get("statuses") or []:
+                status_count += 1
+                log_event("meta_whatsapp_status", {
+                    "message_id": status_event.get("id"),
+                    "status": status_event.get("status"),
+                    "recipient": mask_secret(str(status_event.get("recipient_id", ""))),
+                })
 
-    existing = check_idempotency(normalized["dedupe_key"])
-    if existing is True:
-        log_event("webhook_duplicate", {"dedupe_key": normalized["dedupe_key"], "correlation_id": cid})
-        return 200, {"status": "duplicate"}
-    if existing is False:
-        log_event("webhook_replay", {"event_id": normalized["event_id"], "correlation_id": cid})
-        return 200, {"status": "replay"}
+    normalized_events = _normalize_whatsapp_payloads(body)
+    if not normalized_events:
+        return 200, {"status": "status_acknowledged" if status_count else "ignored", "statuses": status_count}
 
-    if is_opted_out(normalized.get("phone")):
-        log_event("webhook_opted_out", {"phone": mask_secret(normalized.get("phone")), "correlation_id": cid})
-        return 200, {"status": "opted_out"}
+    accepted = 0
+    duplicates = 0
+    for normalized in normalized_events:
+        if not normalized.get("phone"):
+            log_event("webhook_message_missing_sender", {"correlation_id": cid}, level="warning")
+            continue
+        normalized["event_id"] = generate_event_id(normalized["source"], normalized.get("user_id", "unknown"))
+        external_id = normalized.get("conversation_id") or ""
+        normalized["dedupe_key"] = generate_dedupe_key(
+            normalized["source"], normalized.get("user_id", ""), external_id or normalized.get("text", "")
+        )
 
-    record = IdempotencyRecord(
-        event_id=normalized["event_id"],
-        dedupe_key=normalized["dedupe_key"],
-        source=normalized["source"],
-        event_type=normalized["event_type"],
-        payload=normalized,
-    )
-    if not persist_event(record):
-        send_to_dead_letter(record, "persist_failed")
-        return 500, {"status": "persist_failed"}
+        existing = check_idempotency(normalized["dedupe_key"])
+        if existing is not None:
+            duplicates += 1
+            continue
 
-    enqueue_event(normalized)
-    log_event("webhook_accepted", {"event_id": normalized["event_id"], "correlation_id": cid})
-    return 200, {"status": "accepted", "event_id": normalized["event_id"]}
+        if is_opted_out(normalized.get("phone")):
+            log_event("webhook_opted_out", {"phone": mask_secret(normalized.get("phone")), "correlation_id": cid})
+            continue
+
+        record = IdempotencyRecord(
+            event_id=normalized["event_id"],
+            dedupe_key=normalized["dedupe_key"],
+            source=normalized["source"],
+            event_type=normalized["event_type"],
+            payload=normalized,
+        )
+        if not persist_event(record):
+            send_to_dead_letter(record, "persist_failed")
+            return 500, {"status": "persist_failed"}
+        enqueue_event(normalized)
+        accepted += 1
+
+    log_event("webhook_processed", {
+        "correlation_id": cid, "accepted": accepted, "duplicates": duplicates, "statuses": status_count,
+    })
+    return 200, {"status": "accepted", "accepted": accepted, "duplicates": duplicates, "statuses": status_count}
 
 
 class Handler(BaseHTTPRequestHandler):
-    def log_message(self, *a):
+    def log_message(self, *args):
         pass
 
     def do_GET(self):
-        if _provider.verify_webhook({"hub.mode": self.path.split("hub.mode=")[-1].split("&")[0] if "hub.mode=" in self.path else "",
-                                      "hub.verify_token": self.path.split("hub.verify_token=")[-1].split("&")[0] if "hub.verify_token=" in self.path else "",
-                                      "hub.challenge": self.path.split("hub.challenge=")[-1].split("&")[0] if "hub.challenge=" in self.path else ""}):
-            challenge = self.path.split("hub.challenge=")[-1].split("&")[0] if "hub.challenge=" in self.path else ""
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(challenge.encode())
-            log_event("webhook_verified", {"provider": "whatsapp"})
-        else:
-            self.send_response(403)
-            self.end_headers()
+        query = {key: values[-1] for key, values in parse_qs(self.path.partition("?")[2]).items()}
+        status, body = verify_webhook_challenge(query)
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(body.encode("utf-8"))
 
     def do_POST(self):
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self.send_response(400)
+            self.end_headers()
+            return
+        if content_length <= 0 or content_length > 2_000_000:
+            self.send_response(413 if content_length > 2_000_000 else 400)
+            self.end_headers()
+            return
         body_bytes = self.rfile.read(content_length)
-        signature = self.headers.get("X-Hub-Signature-256", "")
-        status, response = handle_webhook(body_bytes, signature)
+        status, response = handle_webhook(body_bytes, self.headers.get("X-Hub-Signature-256", ""))
         self.send_response(status)
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
-        if response:
-            self.wfile.write(json.dumps(response).encode())
+        self.wfile.write(json.dumps(response).encode("utf-8"))
 
 
 def start_webhook_server(port: int = 8080) -> threading.Thread:
-    import threading
     server = HTTPServer(("0.0.0.0", port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -143,7 +181,7 @@ def start_webhook_server(port: int = 8080) -> threading.Thread:
 
 
 if __name__ == "__main__":
-    start_webhook_server(int(os.environ.get("PORT", 8080)))
     import time
+    start_webhook_server(int(os.environ.get("PORT", 8080)))
     while True:
         time.sleep(60)
