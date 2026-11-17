@@ -16,6 +16,17 @@ class TestMetaProvider(unittest.TestCase):
             provider = DirectWhatsAppProvider()
         self.assertEqual(provider.api_version, "v27.0")
 
+    def test_explicit_meta_selection_overrides_legacy_waha_environment(self):
+        from whatsapp_provider import _reset_provider, get_whatsapp_provider
+        _reset_provider()
+        try:
+            with patch.dict(os.environ, {
+                "WHATSAPP_PROVIDER": "meta", "WAHA_BASE_URL": "https://legacy-waha.invalid"
+            }, clear=True):
+                self.assertIsInstance(get_whatsapp_provider(), DirectWhatsAppProvider)
+        finally:
+            _reset_provider()
+
     def test_graph_api_version_can_be_pinned(self):
         with patch.dict(os.environ, {"WHATSAPP_GRAPH_API_VERSION": "v26.0"}, clear=True):
             provider = DirectWhatsAppProvider()
