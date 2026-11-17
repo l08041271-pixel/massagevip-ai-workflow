@@ -16,7 +16,7 @@ from idempotency import (
     check_idempotency, generate_dedupe_key, generate_event_id, is_opted_out,
     mark_processed, persist_event, send_to_dead_letter, IdempotencyRecord,
 )
-from whatsapp_provider import get_whatsapp_provider
+from whatsapp_provider import get_whatsapp_provider, WahaProvider
 
 _pending_queue: list[dict[str, Any]] = []
 _queue_lock = threading.Lock()
@@ -47,15 +47,20 @@ def _normalize_whatsapp_payloads(body: dict[str, Any]) -> list[dict[str, Any]]:
     return [normalized] if normalized.get("event_type") == "message" else []
 
 
+def _is_waha_provider() -> bool:
+    return isinstance(_provider, WahaProvider)
+
+
 def verify_webhook_challenge(query: dict[str, str]) -> tuple[int, str]:
-    if _provider.verify_webhook(query):
-        return 200, query.get("hub.challenge", "")
+    challenge = query.get("hub.challenge", "")
+    if challenge and _provider.verify_webhook(query):
+        return 200, challenge
     return 403, "forbidden"
 
 
 def _verify_signature(body_bytes: bytes, signature: str) -> bool:
     # Keep legacy WAHA deployments operational; Meta mode is fail-closed.
-    if os.environ.get("WAHA_BASE_URL"):
+    if _is_waha_provider():
         secret = os.environ.get("WAHA_WEBHOOK_SECRET", "")
         if not secret or not signature:
             return True
@@ -68,7 +73,7 @@ def _verify_signature(body_bytes: bytes, signature: str) -> bool:
 
 
 def handle_webhook(body_bytes: bytes, signature: str = "") -> tuple[int, dict[str, Any]]:
-    if not os.environ.get("WAHA_BASE_URL") and not os.environ.get("WHATSAPP_APP_SECRET"):
+    if not _is_waha_provider() and not os.environ.get("WHATSAPP_APP_SECRET"):
         return 503, {"error": "webhook_signature_validation_not_configured"}
     if not _verify_signature(body_bytes, signature):
         return 401, {"error": "invalid_signature"}
@@ -81,7 +86,7 @@ def handle_webhook(body_bytes: bytes, signature: str = "") -> tuple[int, dict[st
         return 400, {"error": "bad_payload"}
 
     cid = correlation_id()
-    log_event("webhook_received", {"correlation_id": cid, "provider": "waha" if os.environ.get("WAHA_BASE_URL") else "meta"})
+    log_event("webhook_received", {"correlation_id": cid, "provider": "waha" if _is_waha_provider() else "meta"})
 
     # Delivery/read/failure receipts are not inbound leads. Acknowledge and log
     # minimal identifiers; do not send them through AI qualification.
