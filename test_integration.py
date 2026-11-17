@@ -2,6 +2,8 @@
 Integration tests for MassageVIP Automation MVP.
 Tests core pipeline without external dependencies.
 """
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -117,10 +119,11 @@ class TestWebhookNormalization(unittest.TestCase):
         norm = _normalize_whatsapp_payload(body)
         self.assertEqual(norm["text"], "")
 
+    @patch.dict(os.environ, {"WHATSAPP_APP_SECRET": "secret"}, clear=True)
     @patch("webhook._verify_signature", return_value=False)
     def test_webhook_rejects_bad_signature(self, _):
         status, _ = handle_webhook(b"{}", "bad_sig")
-        self.assertEqual(status, 403)
+        self.assertEqual(status, 401)
 
     def test_webhook_accepts_valid(self):
         with patch.dict(os.environ, {"WHATSAPP_VERIFY_TOKEN": "tok", "WHATSAPP_APP_SECRET": "secret"}):
@@ -130,7 +133,9 @@ class TestWebhookNormalization(unittest.TestCase):
                         with patch("webhook.enqueue_event"):
                             status, resp = handle_webhook(json.dumps({
                                 "entry": [{"changes": [{"value": {"messages": [{"from": "966500000000", "type": "text", "text": {"body": "book"}}]}}]}]
-                            }).encode(), "")
+                            }).encode(), "sha256=" + hmac.new(b"secret", json.dumps({
+                                "entry": [{"changes": [{"value": {"messages": [{"from": "966500000000", "type": "text", "text": {"body": "book"}}]}}]}]
+                            }).encode(), hashlib.sha256).hexdigest())
                             self.assertEqual(status, 200)
                             self.assertEqual(resp["status"], "accepted")
 

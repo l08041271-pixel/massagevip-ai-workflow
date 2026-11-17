@@ -9,9 +9,10 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from middleware import validate_config, log_event
-from webhook import handle_webhook
+from webhook import handle_webhook, verify_webhook_challenge
 from ai_orchestrator import qualify, retrieve_context
 from decision_engine import decide
 from actions import process_event
@@ -43,18 +44,12 @@ def _process_pending() -> int:
             qualification = qualify(event, context)
             decision = decide(event, qualification, context)
             result = process_event(event, qualification, context)
-
             log_decision(
-                cid,
-                decision.action,
-                {"event": event, "qualification": qualification},
-                result,
+                cid, decision.action, {"event": event, "qualification": qualification}, result,
                 {"confidence": decision.confidence, "handoff": decision.human_handoff},
             )
-
             if result.get("whatsapp", {}).get("status") == "sent":
                 log_external_action(cid, "whatsapp_send", event.get("phone", ""), result["whatsapp"])
-
             if decision.action != "suppress":
                 try:
                     import psycopg2
@@ -64,41 +59,31 @@ def _process_pending() -> int:
                         try:
                             with conn.cursor() as cur:
                                 cur.execute(
-                                    """
-                                    INSERT INTO events (event_id, priority, lead_score, intent, sentiment, recommended_action, confidence, human_handoff)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                                    """,
-                                    (
-                                        cid,
-                                        _map_priority(decision.action),
-                                        int(decision.confidence),
-                                        qualification.get("intent", "general"),
-                                        "neutral",
-                                        decision.action,
-                                        decision.confidence,
-                                        decision.human_handoff,
-                                    ),
+                                    """INSERT INTO events
+                                    (event_id, priority, lead_score, intent, sentiment, recommended_action, confidence, human_handoff)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                                    (cid, _map_priority(decision.action), int(decision.confidence),
+                                     qualification.get("intent", "general"), "neutral", decision.action,
+                                     decision.confidence, decision.human_handoff),
                                 )
                             conn.commit()
                         finally:
                             conn.close()
                 except Exception:
-                    pass
-
+                    log_event("event_analytics_persist_failed", {"event_id": cid}, level="warning")
             mark_processed(cid, success=True)
             processed += 1
         except Exception as exc:
-            log_event("event_processing_failed", {"event_id": event.get("event_id"), "error": str(exc)}, level="error")
-            mark_processed(event.get("event_id", ""), success=False, error=str(exc))
+            log_event("event_processing_failed", {
+                "event_id": event.get("event_id"), "error_type": type(exc).__name__,
+            }, level="error")
+            mark_processed(event.get("event_id", ""), success=False, error=type(exc).__name__)
             record = IdempotencyRecord(
-                event_id=event.get("event_id", ""),
-                dedupe_key=event.get("dedupe_key", ""),
-                source=event.get("source", ""),
-                event_type=event.get("event_type", ""),
-                payload=event,
-                dead_letter=True,
+                event_id=event.get("event_id", ""), dedupe_key=event.get("dedupe_key", ""),
+                source=event.get("source", ""), event_type=event.get("event_type", ""),
+                payload=event, dead_letter=True,
             )
-            send_to_dead_letter(record, str(exc))
+            send_to_dead_letter(record, type(exc).__name__)
     return processed
 
 
@@ -117,64 +102,75 @@ def _worker_loop() -> None:
         try:
             _process_pending()
         except Exception as exc:
-            log_event("worker_loop_error", {"error": str(exc)}, level="error")
+            log_event("worker_loop_error", {"error_type": type(exc).__name__}, level="error")
         time.sleep(1)
 
 
 class UnifiedHandler(BaseHTTPRequestHandler):
-    def log_message(self, *a):
+    def log_message(self, *args):
         pass
 
     def _send_json(self, status: int, data: dict[str, Any]) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+        self.wfile.write(json.dumps(data).encode("utf-8"))
 
     def do_GET(self):
-        if self.path == "/health":
+        parsed = urlsplit(self.path)
+        if parsed.path == "/webhook":
+            query = {key: values[-1] for key, values in parse_qs(parsed.query).items()}
+            status, challenge = verify_webhook_challenge(query)
+            self.send_response(status)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(challenge.encode("utf-8"))
+            return
+        if parsed.path == "/health":
             health = HealthCheck.full()
             statuses = [check.get("status") for check in health["checks"].values()]
             healthy = all(status in ("healthy", "configured", "skipped") for status in statuses)
             self._send_json(200 if healthy else 503, health)
             return
-        if self.path == "/dashboard":
-            summary = get_executive_summary()
-            self._send_json(200, summary)
+        if parsed.path == "/dashboard":
+            self._send_json(200, get_executive_summary())
             return
-        if self.path == "/metrics":
+        if parsed.path == "/metrics":
             self._send_json(200, {"status": "ok", "service": "massagevip-automation"})
             return
         self.send_response(404)
         self.end_headers()
 
     def do_POST(self):
-        if self.path == "/internal/agent/cycle":
+        parsed = urlsplit(self.path)
+        if parsed.path == "/internal/agent/cycle":
             expected = os.environ.get("AGENT_CRON_TOKEN", "")
             supplied = self.headers.get("Authorization", "")
             expected_header = f"Bearer {expected}" if expected else ""
             if not expected or not hmac.compare_digest(supplied, expected_header):
                 self._send_json(401, {"status": "unauthorized"})
                 return
-            processed = _process_pending()
-            self._send_json(200, {"status": "ok", "processed": processed, "timestamp": time.time()})
+            self._send_json(200, {"status": "ok", "processed": _process_pending(), "timestamp": time.time()})
             return
-
-        content_length = int(self.headers.get("Content-Length", 0))
+        if parsed.path != "/webhook":
+            self._send_json(404, {"error": "not_found"})
+            return
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self._send_json(400, {"error": "invalid_content_length"})
+            return
+        if content_length <= 0 or content_length > 2_000_000:
+            self._send_json(413 if content_length > 2_000_000 else 400, {"error": "invalid_body_size"})
+            return
         body_bytes = self.rfile.read(content_length)
-        signature = self.headers.get("X-Hub-Signature-256", "")
-        status, response = handle_webhook(body_bytes, signature)
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        if response:
-            self.wfile.write(json.dumps(response).encode())
+        status, response = handle_webhook(body_bytes, self.headers.get("X-Hub-Signature-256", ""))
+        self._send_json(status, response)
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    worker_thread = threading.Thread(target=_worker_loop, daemon=True)
-    worker_thread.start()
+    threading.Thread(target=_worker_loop, daemon=True).start()
     server = HTTPServer(("0.0.0.0", port), UnifiedHandler)
     log_event("service_started", {"port": port, "mode": "unified"})
     server.serve_forever()
