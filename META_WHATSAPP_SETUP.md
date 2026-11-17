@@ -1,13 +1,14 @@
 # Meta WhatsApp Cloud API setup — MassageVIP Riyadh
 
-This repository supports the official Meta WhatsApp Cloud API directly. WAHA remains available as the existing alternative provider; do not set `WAHA_BASE_URL` when selecting Meta.
+This repository supports the official Meta WhatsApp Cloud API directly. WAHA remains available as the existing alternative provider. Set `WHATSAPP_PROVIDER=meta` to explicitly select Meta while preserving legacy WAHA settings; use `WHATSAPP_PROVIDER=waha` to select WAHA.
 
 ## Required configuration
 
-Set these as encrypted environment variables in the hosting provider. Do not commit a .env file or paste token values into GitHub issues, logs, or chat.
+Set these as encrypted environment variables in the hosting provider. Set `WHATSAPP_PROVIDER=meta` so an existing `WAHA_BASE_URL` does not override the requested provider. Do not commit a .env file or paste token values into GitHub issues, logs, or chat.
 
 | Variable | Purpose |
 |---|---|
+| `WHATSAPP_PROVIDER` | Set to `meta` to select Meta regardless of legacy WAHA environment variables |
 | `WHATSAPP_ACCESS_TOKEN` | Meta system-user access token with WhatsApp messaging permission |
 | `WHATSAPP_PHONE_NUMBER_ID` | Meta WhatsApp Business phone-number ID (not the display phone number) |
 | `WHATSAPP_VERIFY_TOKEN` | Private random string chosen by you and entered identically in Meta webhook settings |
