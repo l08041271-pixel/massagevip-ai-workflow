@@ -73,8 +73,8 @@ MACROS = {
  },
  "opt_out": {
   "workflow_macro":"marketing_suppression_review",
-  "en":"Your request to stop marketing messages has been received. We will not send further marketing messages to this contact.",
-  "ar":"تم استلام طلبك بإيقاف الرسائل التسويقية. لن نرسل رسائل تسويقية إضافية إلى جهة الاتصال هذه."
+  "en":"Your request to stop marketing messages has been recorded for processing. A team member will verify the suppression request.",
+  "ar":"تم تسجيل طلب إيقاف الرسائل التسويقية لمعالجته. سيتحقق أحد أعضاء الفريق من تنفيذ طلب الإيقاف."
  },
  "general": {
   "workflow_macro":"clarify_request",
