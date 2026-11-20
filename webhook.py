@@ -22,6 +22,7 @@ from idempotency import (
     IdempotencyRecord,
 )
 from whatsapp_provider import get_whatsapp_provider
+from intent_engine import classify_intent
 
 VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "")
 APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
@@ -72,6 +73,20 @@ def handle_webhook(body_bytes: bytes, signature: str = "") -> tuple[int, dict[st
     log_event("webhook_received", {"correlation_id": cid, "keys": list(body.keys())})
 
     normalized = _normalize_whatsapp_payload(body)
+    # Attach deterministic intent metadata before persistence; no customer-facing action runs here.
+    if normalized.get("event_type") == "message" and normalized.get("text"):
+        normalized["intent_detection"] = classify_intent(
+            {"source": normalized.get("source", "whatsapp"), "text": normalized.get("text", "")},
+            allow_ai=False,
+        )
+        detected = normalized["intent_detection"]
+        log_event("intent_classified", {
+            "source": normalized.get("source", "whatsapp"),
+            "intent": detected["intent"],
+            "confidence": detected["confidence"],
+            "language": detected["language"],
+            "urgency": detected["urgency"],
+        })
     normalized["event_id"] = generate_event_id(normalized["source"], normalized.get("user_id", "unknown"))
     normalized["dedupe_key"] = generate_dedupe_key(
         normalized["source"], normalized.get("user_id", ""), normalized.get("text", "")
