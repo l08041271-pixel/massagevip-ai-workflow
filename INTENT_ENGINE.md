@@ -32,3 +32,11 @@ Run: python -m unittest test_intent_engine.py -v
 ## Render configuration
 
 Set a high-entropy `INTENT_API_TOKEN` in the Render service environment before exposing the classification endpoint to channel adapters. Keep `INTENT_AI_REFINEMENT_ENABLED=false` until AI-assisted refinement has been explicitly approved and tested. These settings are declared in `render.yaml` but have not been applied to the live service by this branch.
+
+## Response and workflow macros
+
+The bilingual macro catalog is exposed at GET /api/intents/macros. Each classification response also includes a `macro` object with `macro_id`, `workflow_macro`, `language`, `response_template`, `requires_review`, and `auto_send=false`.
+
+Macros are draft templates only. They are not sent automatically. Pricing, service, location, hours and payment replies must be populated from approved business data before sending. Cancellation and reschedule templates explicitly avoid claiming the change is complete. Opt-out templates acknowledge the request without promotional content. The spam macro has no reply text.
+
+All macros have English and Arabic variants and can be edited in `response_macros.py`.
