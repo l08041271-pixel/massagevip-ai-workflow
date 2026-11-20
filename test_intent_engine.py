@@ -30,13 +30,15 @@ class WhatsAppWebhookIntentTests(unittest.TestCase):
  def test_webhook_persists_detected_intent_metadata(self):
   import json
   from unittest.mock import patch
-  from webhook import handle_webhook
+  import webhook
+  from whatsapp_provider import WahaProvider
   body={"event":"message","payload":{"id":"msg-intent-1","chatId":"966500000000@c.us","from":"966500000000","type":"text","body":"I want to book tonight"}}
   with patch("webhook.check_idempotency",return_value=None), \
        patch("webhook.persist_event",return_value=True), \
        patch("webhook.is_opted_out",return_value=False), \
        patch("webhook.enqueue_event") as enqueue:
-   status,response=handle_webhook(json.dumps(body).encode(), "")
+   with patch.object(webhook,"_provider",WahaProvider()):
+    status,response=webhook.handle_webhook(json.dumps(body).encode(), "")
   self.assertEqual(status,200)
   self.assertEqual(response["status"],"accepted")
   event=enqueue.call_args.args[0]
@@ -45,13 +47,15 @@ class WhatsAppWebhookIntentTests(unittest.TestCase):
  def test_webhook_does_not_classify_non_message_events(self):
   import json
   from unittest.mock import patch
-  from webhook import handle_webhook
+  import webhook
+  from whatsapp_provider import WahaProvider
   body={"event":"status","payload":{}}
   with patch("webhook.check_idempotency",return_value=None), \
        patch("webhook.persist_event",return_value=True), \
        patch("webhook.is_opted_out",return_value=False), \
        patch("webhook.enqueue_event") as enqueue:
-   status,_=handle_webhook(json.dumps(body).encode(), "")
+   with patch.object(webhook,"_provider",WahaProvider()):
+    status,_=webhook.handle_webhook(json.dumps(body).encode(), "")
   self.assertEqual(status,200)
   self.assertNotIn("intent_detection",enqueue.call_args.args[0])
 
