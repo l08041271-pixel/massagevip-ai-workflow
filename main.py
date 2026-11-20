@@ -13,6 +13,8 @@ from typing import Any
 from middleware import validate_config, log_event
 from webhook import handle_webhook
 from ai_orchestrator import qualify, retrieve_context
+from intent_engine import classify_intent, INTENT_CATALOG, SUPPORTED_CHANNELS
+from response_macros import macro_catalog
 from decision_engine import decide
 from actions import process_event
 from audit import log_decision, log_external_action
@@ -132,6 +134,12 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def do_GET(self):
+        if self.path == "/api/intents/catalog":
+            self._send_json(200, {"channels": list(SUPPORTED_CHANNELS), "intents": INTENT_CATALOG})
+            return
+        if self.path == "/api/intents/macros":
+            self._send_json(200, {"macros": macro_catalog()})
+            return
         if self.path == "/health":
             health = HealthCheck.full()
             statuses = [check.get("status") for check in health["checks"].values()]
@@ -149,6 +157,31 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        if self.path == "/api/intents/classify":
+            expected = os.environ.get("INTENT_API_TOKEN", "")
+            supplied = self.headers.get("Authorization", "")
+            if not expected:
+                self._send_json(503, {"error": "intent_api_not_configured"})
+                return
+            if not hmac.compare_digest(supplied, f"Bearer {expected}"):
+                self._send_json(401, {"error": "unauthorized"})
+                return
+            content_length = int(self.headers.get("Content-Length", 0))
+            if content_length <= 0 or content_length > 65536:
+                self._send_json(413 if content_length > 65536 else 400, {"error": "invalid_content_length"})
+                return
+            try:
+                payload = json.loads(self.rfile.read(content_length))
+                if not isinstance(payload, dict):
+                    raise ValueError("request_body_must_be_object")
+                self._send_json(200, classify_intent(payload, allow_ai=os.environ.get("INTENT_AI_REFINEMENT_ENABLED", "").lower() == "true"))
+            except (json.JSONDecodeError, ValueError) as exc:
+                self._send_json(400, {"error": "invalid_request", "detail": str(exc)})
+            except Exception as exc:
+                log_event("intent_classification_failed", {"error": str(exc)}, level="error")
+                self._send_json(500, {"error": "classification_failed"})
+            return
+
         if self.path == "/internal/agent/cycle":
             expected = os.environ.get("AGENT_CRON_TOKEN", "")
             supplied = self.headers.get("Authorization", "")
