@@ -14,6 +14,7 @@ from middleware import validate_config, log_event
 from webhook import handle_webhook
 from ai_orchestrator import qualify, retrieve_context
 from intent_engine import classify_intent, INTENT_CATALOG, SUPPORTED_CHANNELS
+from response_macros import macro_catalog
 from decision_engine import decide
 from actions import process_event
 from audit import log_decision, log_external_action
@@ -135,6 +136,9 @@ class UnifiedHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/intents/catalog":
             self._send_json(200, {"channels": list(SUPPORTED_CHANNELS), "intents": INTENT_CATALOG})
+            return
+        if self.path == "/api/intents/macros":
+            self._send_json(200, {"macros": macro_catalog()})
             return
         if self.path == "/health":
             health = HealthCheck.full()
