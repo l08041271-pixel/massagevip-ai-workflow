@@ -47,6 +47,7 @@ def _normalize_text(value:str)->str:
  text=unicodedata.normalize("NFKC",value or "").lower()
  text="".join(ch for ch in text if not unicodedata.combining(ch))
  text=re.sub(r"[إأآٱ]","ا",text)
+ text=re.sub(r"[،؛؟!.,…:()\\[\\]{}\u0022“”‘’]"," ",text)
  return re.sub(r"\s+"," ",text).strip()
 
 def _contains(text:str,phrase:str)->bool:
