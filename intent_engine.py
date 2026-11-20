@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json, os, re, unicodedata
 from typing import Any
+from response_macros import get_macro
 
 SUPPORTED_CHANNELS = ("whatsapp","instagram","facebook","tiktok","website","telegram","email","phone","crm","unknown")
 INTENT_CATALOG = {
@@ -111,4 +112,4 @@ def classify_intent(event:dict[str,Any],allow_ai:bool=True)->dict[str,Any]:
   "confidence":round(max(0,min(1,confidence)),2),"language":_language(text),"urgency":urgency,
   "recommended_action":actions[primary],"human_handoff":handoff,
   "requires_human_review":primary in ("cancellation","reschedule","complaint","opt_out"),
-  "entities":_entities(text,normalized),"classifier":mode,"side_effects":False}
+  "entities":_entities(text,normalized),"classifier":mode,"macro":get_macro(primary,_language(text)),"side_effects":False}
