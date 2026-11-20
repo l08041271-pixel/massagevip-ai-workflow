@@ -154,6 +154,14 @@ class UnifiedHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if self.path == "/api/intents/classify":
+            expected = os.environ.get("INTENT_API_TOKEN", "")
+            supplied = self.headers.get("Authorization", "")
+            if not expected:
+                self._send_json(503, {"error": "intent_api_not_configured"})
+                return
+            if not hmac.compare_digest(supplied, f"Bearer {expected}"):
+                self._send_json(401, {"error": "unauthorized"})
+                return
             content_length = int(self.headers.get("Content-Length", 0))
             if content_length <= 0 or content_length > 65536:
                 self._send_json(413 if content_length > 65536 else 400, {"error": "invalid_content_length"})
@@ -162,7 +170,7 @@ class UnifiedHandler(BaseHTTPRequestHandler):
                 payload = json.loads(self.rfile.read(content_length))
                 if not isinstance(payload, dict):
                     raise ValueError("request_body_must_be_object")
-                self._send_json(200, classify_intent(payload, allow_ai=True))
+                self._send_json(200, classify_intent(payload, allow_ai=os.environ.get("INTENT_AI_REFINEMENT_ENABLED", "").lower() == "true"))
             except (json.JSONDecodeError, ValueError) as exc:
                 self._send_json(400, {"error": "invalid_request", "detail": str(exc)})
             except Exception as exc:
