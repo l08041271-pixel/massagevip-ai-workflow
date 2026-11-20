@@ -25,4 +25,34 @@ class IntentEngineTests(unittest.TestCase):
   self.assertIn("booking",INTENT_CATALOG); self.assertIn("opt_out",INTENT_CATALOG); self.assertIn("complaint",INTENT_CATALOG)
  def test_no_side_effects(self):
   self.assertFalse(classify_intent({"source":"whatsapp","text":"Book me"})["side_effects"])
+
+class WhatsAppWebhookIntentTests(unittest.TestCase):
+ def test_webhook_persists_detected_intent_metadata(self):
+  import json
+  from unittest.mock import patch
+  from webhook import handle_webhook
+  body={"event":"message","payload":{"id":"msg-intent-1","chatId":"966500000000@c.us","from":"966500000000","type":"text","body":"I want to book tonight"}}
+  with patch("webhook.check_idempotency",return_value=None), \
+       patch("webhook.persist_event",return_value=True), \
+       patch("webhook.is_opted_out",return_value=False), \
+       patch("webhook.enqueue_event") as enqueue:
+   status,response=handle_webhook(json.dumps(body).encode(), "")
+  self.assertEqual(status,200)
+  self.assertEqual(response["status"],"accepted")
+  event=enqueue.call_args.args[0]
+  self.assertEqual(event["intent_detection"]["intent"],"booking")
+  self.assertFalse(event["intent_detection"]["side_effects"])
+ def test_webhook_does_not_classify_non_message_events(self):
+  import json
+  from unittest.mock import patch
+  from webhook import handle_webhook
+  body={"event":"status","payload":{}}
+  with patch("webhook.check_idempotency",return_value=None), \
+       patch("webhook.persist_event",return_value=True), \
+       patch("webhook.is_opted_out",return_value=False), \
+       patch("webhook.enqueue_event") as enqueue:
+   status,_=handle_webhook(json.dumps(body).encode(), "")
+  self.assertEqual(status,200)
+  self.assertNotIn("intent_detection",enqueue.call_args.args[0])
+
 if __name__=="__main__": unittest.main()
