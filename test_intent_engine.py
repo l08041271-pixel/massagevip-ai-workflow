@@ -59,4 +59,23 @@ class WhatsAppWebhookIntentTests(unittest.TestCase):
   self.assertEqual(status,200)
   self.assertNotIn("intent_detection",enqueue.call_args.args[0])
 
+class ResponseMacroTests(unittest.TestCase):
+ def test_classifier_returns_bilingual_macro(self):
+  en=classify_intent({"source":"website","text":"How much is a session?"})
+  ar=classify_intent({"source":"whatsapp","text":"كم السعر؟"})
+  self.assertEqual(en["macro"]["macro_id"],"pricing")
+  self.assertEqual(en["macro"]["language"],"en")
+  self.assertEqual(ar["macro"]["language"],"ar")
+  self.assertFalse(en["macro"]["auto_send"])
+ def test_opt_out_macro_never_auto_sends(self):
+  r=classify_intent({"source":"telegram","text":"Stop messaging me"})
+  self.assertEqual(r["macro"]["workflow_macro"],"marketing_suppression_review")
+  self.assertFalse(r["macro"]["auto_send"])
+ def test_spam_macro_is_empty(self):
+  from response_macros import get_macro
+  self.assertEqual(get_macro("spam")["response_template"],"")
+ def test_all_intents_have_macros(self):
+  from response_macros import macro_catalog
+  self.assertEqual(set(macro_catalog()),set(INTENT_CATALOG))
+
 if __name__=="__main__": unittest.main()
