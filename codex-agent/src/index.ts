@@ -257,9 +257,11 @@ async function initialize(): Promise<void> {
          RETURNING *`,
         [id, parsed.data.mode, parsed.data.prompt],
       );
+      const insertedTask = inserted.rows[0];
+      if (!insertedTask) throw new Error("Task insert returned no row.");
       queue.push(id);
       res.status(202).json({
-        task: publicTask(mapTask(inserted.rows[0])),
+        task: publicTask(mapTask(insertedTask)),
         statusUrl: `/v1/tasks/${id}`,
       });
       void processQueue();
