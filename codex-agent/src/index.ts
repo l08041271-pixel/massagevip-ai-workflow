@@ -106,7 +106,7 @@ async function processQueue(): Promise<void> {
           model: process.env.CODEX_MODEL || undefined,
           modelReasoningEffort: "medium",
         });
-        task.threadId = thread.id;
+        task.threadId = thread.id ?? undefined;
 
         const result = await thread.run([
           "You are the engineering agent for MassageVIP Riyadh AI Operations.",
