@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { Codex, type SandboxMode } from "@openai/codex-sdk";
