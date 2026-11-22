@@ -165,12 +165,12 @@ async function processQueue(): Promise<void> {
           [id, result.finalResponse, task.threadId ?? null],
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown agent error";
+        console.error("Codex task failed", { taskId: id, error });
         await pool.query(
           `UPDATE codex_agent_tasks
            SET status = 'failed', error = $2, thread_id = $3, completed_at = NOW()
            WHERE id = $1`,
-          [id, message.slice(0, 4_000), task.threadId ?? null],
+          [id, "Agent task failed; inspect protected server logs for details.", task.threadId ?? null],
         );
       }
     }
@@ -286,8 +286,8 @@ async function initialize(): Promise<void> {
   });
 
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    const message = error instanceof Error ? error.message : "Internal server error";
-    res.status(500).json({ error: "internal_server_error", message });
+    console.error("Unhandled Codex agent API error", error);
+    res.status(500).json({ error: "internal_server_error" });
   });
 
   app.listen(port, "0.0.0.0", () => {
