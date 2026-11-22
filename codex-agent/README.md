@@ -20,7 +20,7 @@ An isolated TypeScript service that embeds the official OpenAI Codex SDK alongsi
 - The agent cannot send WhatsApp messages, call external APIs, deploy, publish, merge pull requests, or modify cloud resources.
 - The service does not expose a deploy, shell, or arbitrary command endpoint.
 - `review` uses `read-only`; `implement` uses `workspace-write`. Full-access mode is not used.
-- Tasks and thread IDs are held in process memory. They are lost on restart; use a durable queue/database before production.
+- Task records and results are stored in PostgreSQL and retained for 30 days. Queued tasks are recovered on restart; tasks that were running at restart are marked failed to avoid accidental duplicate execution. Run one service instance only: this MVP does not yet implement distributed worker locking.
 - Put this API behind HTTPS and a trusted reverse proxy. Restrict network ingress to approved operators.
 
 ## Requirements
@@ -86,4 +86,4 @@ A successful submission returns HTTP 202 and a task ID. Task status is `queued`,
 5. Configure a dedicated least-privilege runtime identity and isolated workspace.
 6. Add CI integration, dependency scanning and an authenticated health/metrics strategy.
 
-This service does not claim that GitHub, WhatsApp, Supabase, or deployment integrations are connected.
+The task store requires a private PostgreSQL `DATABASE_URL`. This service does not claim that GitHub, WhatsApp, Supabase, or deployment integrations are connected.
