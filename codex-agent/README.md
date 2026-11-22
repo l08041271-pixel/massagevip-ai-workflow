@@ -26,6 +26,7 @@ An isolated TypeScript service that embeds the official OpenAI Codex SDK alongsi
 ## Requirements
 
 - Node.js 20.6+
+- PostgreSQL 14+ and a private `DATABASE_URL`
 - Codex CLI available to the service account and authenticated
 - A Git repository as the working directory
 
