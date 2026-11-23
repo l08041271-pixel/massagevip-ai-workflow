@@ -9,6 +9,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
+from urllib.parse import urlsplit
 
 from middleware import validate_config, log_event
 from webhook import handle_webhook
@@ -26,8 +27,16 @@ from approval import create_approval_request, approve, reject
 _missing_env = validate_config()
 if _missing_env:
     log_event("config_missing_env", {"missing": _missing_env}, level="error")
-
 _circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60.0)
+
+
+def _owner_authorized(headers) -> bool:
+    token = os.environ.get("DASHBOARD_API_TOKEN", "")
+    if not token:
+        return False
+    supplied = headers.get("Authorization", "")
+    expected = f"Bearer {token}"
+    return hmac.compare_digest(supplied, expected)
 
 
 def _process_pending() -> int:
@@ -43,18 +52,10 @@ def _process_pending() -> int:
             qualification = qualify(event, context)
             decision = decide(event, qualification, context)
             result = process_event(event, qualification, context)
-
-            log_decision(
-                cid,
-                decision.action,
-                {"event": event, "qualification": qualification},
-                result,
-                {"confidence": decision.confidence, "handoff": decision.human_handoff},
-            )
-
+            log_decision(cid, decision.action, {"event": event, "qualification": qualification}, result,
+                         {"confidence": decision.confidence, "handoff": decision.human_handoff})
             if result.get("whatsapp", {}).get("status") == "sent":
                 log_external_action(cid, "whatsapp_send", event.get("phone", ""), result["whatsapp"])
-
             if decision.action != "suppress":
                 try:
                     import psycopg2
@@ -64,40 +65,24 @@ def _process_pending() -> int:
                         try:
                             with conn.cursor() as cur:
                                 cur.execute(
-                                    """
-                                    INSERT INTO events (event_id, priority, lead_score, intent, sentiment, recommended_action, confidence, human_handoff)
-                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                                    """,
-                                    (
-                                        cid,
-                                        _map_priority(decision.action),
-                                        int(decision.confidence),
-                                        qualification.get("intent", "general"),
-                                        "neutral",
-                                        decision.action,
-                                        decision.confidence,
-                                        decision.human_handoff,
-                                    ),
-                                )
+                                    """INSERT INTO events (event_id, priority, lead_score, intent, sentiment, recommended_action, confidence, human_handoff)
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                                    (cid, _map_priority(decision.action), int(decision.confidence),
+                                     qualification.get("intent", "general"), "neutral", decision.action,
+                                     decision.confidence, decision.human_handoff))
                             conn.commit()
                         finally:
                             conn.close()
                 except Exception:
-                    pass
-
+                    log_event("event_analytics_persist_failed", {"event_id": cid}, level="error")
             mark_processed(cid, success=True)
             processed += 1
         except Exception as exc:
             log_event("event_processing_failed", {"event_id": event.get("event_id"), "error": str(exc)}, level="error")
             mark_processed(event.get("event_id", ""), success=False, error=str(exc))
-            record = IdempotencyRecord(
-                event_id=event.get("event_id", ""),
-                dedupe_key=event.get("dedupe_key", ""),
-                source=event.get("source", ""),
-                event_type=event.get("event_type", ""),
-                payload=event,
-                dead_letter=True,
-            )
+            record = IdempotencyRecord(event_id=event.get("event_id", ""), dedupe_key=event.get("dedupe_key", ""),
+                                       source=event.get("source", ""), event_type=event.get("event_type", ""),
+                                       payload=event, dead_letter=True)
             send_to_dead_letter(record, str(exc))
     return processed
 
@@ -132,24 +117,30 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(data).encode())
 
     def do_GET(self):
-        if self.path == "/health":
+        path = urlsplit(self.path).path
+        if path == "/health":
             health = HealthCheck.full()
             statuses = [check.get("status") for check in health["checks"].values()]
             healthy = all(status in ("healthy", "configured", "skipped") for status in statuses)
             self._send_json(200 if healthy else 503, health)
             return
-        if self.path == "/dashboard":
-            summary = get_executive_summary()
-            self._send_json(200, summary)
-            return
-        if self.path == "/metrics":
-            self._send_json(200, {"status": "ok", "service": "massagevip-automation"})
+        if path in ("/dashboard", "/metrics"):
+            if not os.environ.get("DASHBOARD_API_TOKEN"):
+                self._send_json(503, {"error": "dashboard_auth_not_configured"})
+                return
+            if not _owner_authorized(self.headers):
+                self._send_json(401, {"error": "unauthorized"})
+                return
+            if path == "/dashboard":
+                self._send_json(200, get_executive_summary())
+            else:
+                self._send_json(200, {"status": "ok", "service": "massagevip-automation"})
             return
         self.send_response(404)
         self.end_headers()
 
     def do_POST(self):
-        if self.path == "/internal/agent/cycle":
+        if urlsplit(self.path).path == "/internal/agent/cycle":
             expected = os.environ.get("AGENT_CRON_TOKEN", "")
             supplied = self.headers.get("Authorization", "")
             expected_header = f"Bearer {expected}" if expected else ""
@@ -159,22 +150,26 @@ class UnifiedHandler(BaseHTTPRequestHandler):
             processed = _process_pending()
             self._send_json(200, {"status": "ok", "processed": processed, "timestamp": time.time()})
             return
-
-        content_length = int(self.headers.get("Content-Length", 0))
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except ValueError:
+            self._send_json(400, {"error": "invalid_content_length"})
+            return
+        if content_length <= 0 or content_length > 2_000_000:
+            self._send_json(413 if content_length > 2_000_000 else 400, {"error": "invalid_content_length"})
+            return
         body_bytes = self.rfile.read(content_length)
-        signature = self.headers.get("X-Hub-Signature-256", "")
+        if os.environ.get("WAHA_BASE_URL"):
+            signature = self.headers.get("X-Webhook-Secret", "") or self.headers.get("X-WAHA-Webhook-Secret", "")
+        else:
+            signature = self.headers.get("X-Hub-Signature-256", "")
         status, response = handle_webhook(body_bytes, signature)
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        if response:
-            self.wfile.write(json.dumps(response).encode())
+        self._send_json(status, response)
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
-    worker_thread = threading.Thread(target=_worker_loop, daemon=True)
-    worker_thread.start()
+    threading.Thread(target=_worker_loop, daemon=True).start()
     server = HTTPServer(("0.0.0.0", port), UnifiedHandler)
     log_event("service_started", {"port": port, "mode": "unified"})
     server.serve_forever()
