@@ -3,6 +3,8 @@ Integration tests for MassageVIP Automation MVP.
 Tests core pipeline without external dependencies.
 """
 import json
+import hashlib
+import hmac
 import os
 import sys
 import time
@@ -122,15 +124,23 @@ class TestWebhookNormalization(unittest.TestCase):
         status, _ = handle_webhook(b"{}", "bad_sig")
         self.assertEqual(status, 403)
 
+    def test_webhook_rejects_missing_signature(self):
+        with patch.dict(os.environ, {"WHATSAPP_APP_SECRET": "secret"}, clear=True):
+            status, response = handle_webhook(b"{}", "")
+            self.assertEqual(status, 403)
+            self.assertEqual(response["error"], "invalid_signature")
+
     def test_webhook_accepts_valid(self):
         with patch.dict(os.environ, {"WHATSAPP_VERIFY_TOKEN": "tok", "WHATSAPP_APP_SECRET": "secret"}):
+            body_bytes = json.dumps({
+                "entry": [{"changes": [{"value": {"messages": [{"from": "966500000000", "type": "text", "text": {"body": "book"}}]}}]}]
+            }).encode()
+            signature = "sha256=" + hmac.new(b"secret", body_bytes, hashlib.sha256).hexdigest()
             with patch("webhook.check_idempotency", return_value=None):
                 with patch("webhook.persist_event", return_value=True):
                     with patch("webhook.is_opted_out", return_value=False):
                         with patch("webhook.enqueue_event"):
-                            status, resp = handle_webhook(json.dumps({
-                                "entry": [{"changes": [{"value": {"messages": [{"from": "966500000000", "type": "text", "text": {"body": "book"}}]}}]}]
-                            }).encode(), "")
+                            status, resp = handle_webhook(body_bytes, signature)
                             self.assertEqual(status, 200)
                             self.assertEqual(resp["status"], "accepted")
 
@@ -330,6 +340,8 @@ class TestActions(unittest.TestCase):
         result = process_event(event, qual, ctx)
         self.assertEqual(result["action"], "reply_and_book")
         self.assertIn("reply", result)
+        self.assertEqual(result["whatsapp"]["status"], "pending_approval")
+        mock_send.assert_not_called()
 
 
 class TestAnalytics(unittest.TestCase):
