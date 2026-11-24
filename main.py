@@ -17,6 +17,7 @@ from decision_engine import decide
 from actions import process_event
 from audit import log_decision, log_external_action
 from analytics import get_executive_summary
+from analytics_insights import get_business_insights
 from monitoring import HealthCheck, CircuitBreaker
 from idempotency import mark_processed, IdempotencyRecord, send_to_dead_letter
 from booking import initiate_booking, confirm_booking, cancel_booking
@@ -141,6 +142,11 @@ class UnifiedHandler(BaseHTTPRequestHandler):
         if self.path == "/dashboard":
             summary = get_executive_summary()
             self._send_json(200, summary)
+            return
+        if self.path == "/insights":
+            insights = get_business_insights()
+            status = 200 if insights.get("status") == "live" else 503
+            self._send_json(status, insights)
             return
         if self.path == "/metrics":
             self._send_json(200, {"status": "ok", "service": "massagevip-automation"})
