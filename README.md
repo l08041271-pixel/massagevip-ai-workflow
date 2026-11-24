@@ -82,6 +82,7 @@ python main.py
 | `/webhook` | POST | WhatsApp webhook ingestion |
 | `/health` | GET | Health check with dependency status |
 | `/dashboard` | GET | Executive summary metrics |
+| `/insights` | GET | Lead scoring, historical conversion, demand projection, retention, and campaign analysis |
 | `/metrics` | GET | Service metrics |
 
 ## Deployment
