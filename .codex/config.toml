@@ -1,0 +1,7 @@
+# Project-scoped Codex MCP configuration.
+# Codex loads this for trusted projects. Keep the token in your local environment;
+# never commit credentials or paste them into this file.
+
+[mcp_servers.simular_box]
+url = "https://mcp.box.simular.ai/mcp/cb-5c5c621b1e9f"
+bearer_token_env_var = "SIMULAR_BOX_TOKEN"
