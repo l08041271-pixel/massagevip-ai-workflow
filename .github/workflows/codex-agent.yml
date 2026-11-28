@@ -1,0 +1,29 @@
+name: Codex Agent CI
+
+on:
+  push:
+    paths:
+      - "codex-agent/**"
+      - ".github/workflows/codex-agent.yml"
+  pull_request:
+    paths:
+      - "codex-agent/**"
+      - ".github/workflows/codex-agent.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: codex-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run build
